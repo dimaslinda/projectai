@@ -79,6 +79,8 @@ export interface ChatMetadata {
     persona?: string;
     chat_type?: string;
     timestamp?: string;
+    images?: string[]; // Array of image URLs
+    analyzed_images?: string[]; // Array of analyzed image URLs
     [key: string]: unknown; // Allow additional properties while maintaining type safety
 }
 

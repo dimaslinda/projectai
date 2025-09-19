@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { ArrowLeft, Bot, Send, Share2, Trash2, User } from 'lucide-react';
+import { ArrowLeft, Bot, ImagePlus, Send, Share2, Trash2, User, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import MessageContent from '@/components/MessageContent';
@@ -39,8 +39,12 @@ interface ChatShowProps {
 export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedImages, setSelectedImages] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [isDragOver, setIsDragOver] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,24 +54,153 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         scrollToBottom();
     }, [session.chat_histories, isSubmitting]);
 
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            // Only handle paste when the textarea is focused or when in the chat area
+            if (textareaRef.current && (document.activeElement === textareaRef.current || textareaRef.current.contains(document.activeElement))) {
+                handleClipboardPaste(e);
+            }
+        };
+
+        document.addEventListener('paste', handlePaste);
+        return () => {
+            document.removeEventListener('paste', handlePaste);
+        };
+    }, []);
+
+    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+
+        if (imageFiles.length > 0) {
+            setSelectedImages((prev) => [...prev, ...imageFiles]);
+
+            // Create previews
+            imageFiles.forEach((file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setImagePreviews((prev) => [...prev, e.target?.result as string]);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const handleRemoveImage = (index: number) => {
+        setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+        setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Only set to false if we're leaving the main container
+        if (e.currentTarget === e.target) {
+            setIsDragOver(false);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+
+        const files = Array.from(e.dataTransfer.files);
+        const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+
+        if (imageFiles.length > 0) {
+            setSelectedImages((prev) => [...prev, ...imageFiles]);
+
+            // Create previews
+            imageFiles.forEach((file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setImagePreviews((prev) => [...prev, e.target?.result as string]);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+    };
+
+    const handleClipboardPaste = (e: ClipboardEvent) => {
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        const items = Array.from(clipboardData.items);
+        const imageItems = items.filter((item) => item.type.startsWith('image/'));
+
+        if (imageItems.length > 0) {
+            e.preventDefault(); // Prevent default paste behavior for images
+
+            imageItems.forEach((item) => {
+                const file = item.getAsFile();
+                if (file) {
+                    // Add to selected images
+                    setSelectedImages((prev) => [...prev, file]);
+
+                    // Create preview
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setImagePreviews((prev) => [...prev, e.target?.result as string]);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+    };
+
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message.trim() || !canEdit) return;
+
+        if ((!message.trim() && selectedImages.length === 0) || isSubmitting) return;
 
         setIsSubmitting(true);
-        const messageToSend = message;
-        setMessage('');
 
-        router.post(
-            `/chat/${session.id}/message`,
-            {
-                message: messageToSend,
+        const formData = new FormData();
+        formData.append('message', message.trim());
+
+        // Add images to form data
+        selectedImages.forEach((image, index) => {
+            formData.append(`images[${index}]`, image);
+        });
+
+        router.post(`/chat/${session.id}/message`, formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                // Reset form state after successful submission
+                setMessage('');
+                setSelectedImages([]);
+                setImagePreviews([]);
+
+                // Auto-resize textarea back to minimum height
+                if (textareaRef.current) {
+                    textareaRef.current.style.height = '60px';
+                }
             },
-            {
-                preserveScroll: true,
-                onFinish: () => setIsSubmitting(false),
+            onError: (error) => {
+                console.error('Error sending message:', error);
             },
-        );
+            onFinish: () => {
+                // Always reset submitting state when request is completely finished
+                setIsSubmitting(false);
+            },
+        });
     };
 
     const handleToggleSharing = () => {
@@ -279,7 +412,43 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         }`}
                                     >
                                         {chat.sender === 'user' ? (
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{chat.message}</p>
+                                            <div className="space-y-3">
+                                                {/* Display uploaded images if any */}
+                                                {chat.metadata?.images && Array.isArray(chat.metadata.images) && chat.metadata.images.length > 0 && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {chat.metadata.images.map((imageUrl: string, index: number) => (
+                                                            <div key={index} className="group relative">
+                                                                <img
+                                                                    src={imageUrl}
+                                                                    alt={`Uploaded image ${index + 1}`}
+                                                                    className="h-32 w-full rounded-lg object-cover shadow-sm transition-shadow duration-200 group-hover:shadow-md"
+                                                                />
+                                                                <div className="bg-opacity-0 group-hover:bg-opacity-10 absolute inset-0 flex items-center justify-center rounded-lg transition-all duration-200">
+                                                                    <button
+                                                                        onClick={() => window.open(imageUrl, '_blank')}
+                                                                        className="bg-opacity-90 hover:bg-opacity-100 rounded-full bg-white p-2 opacity-0 transition-all duration-200 group-hover:opacity-100"
+                                                                    >
+                                                                        <svg
+                                                                            className="h-4 w-4 text-gray-700"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            viewBox="0 0 24 24"
+                                                                        >
+                                                                            <path
+                                                                                strokeLinecap="round"
+                                                                                strokeLinejoin="round"
+                                                                                strokeWidth={2}
+                                                                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                                                            />
+                                                                        </svg>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{chat.message}</p>
+                                            </div>
                                         ) : (
                                             <MessageContent content={chat.message} className="text-sm leading-relaxed" />
                                         )}
@@ -352,7 +521,15 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
                 {/* Message Input */}
                 {canEdit && (
-                    <div className="border-t border-gray-200 bg-white/80 p-6 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/80">
+                    <div
+                        className={`relative border-t border-gray-200 bg-white/80 p-6 backdrop-blur-sm transition-all duration-200 dark:border-gray-700 dark:bg-gray-900/80 ${
+                            isDragOver ? 'border-blue-500 bg-blue-50/50 dark:border-blue-400 dark:bg-blue-950/50' : ''
+                        }`}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                    >
                         {/* Persona Context Indicator */}
                         {session.chat_type === 'persona' && session.persona && (
                             <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground duration-300 animate-in slide-in-from-top-2">
@@ -366,6 +543,44 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 </Badge>
                             </div>
                         )}
+
+                        {/* Image Previews */}
+                        {imagePreviews.length > 0 && (
+                            <div className="mb-4 flex flex-wrap gap-2">
+                                {imagePreviews.map((preview, index) => (
+                                    <div key={index} className="relative">
+                                        <img
+                                            src={preview}
+                                            alt={`Preview ${index + 1}`}
+                                            className={`h-20 w-20 rounded-lg border border-gray-200 object-cover shadow-sm dark:border-gray-700 ${
+                                                isSubmitting ? 'opacity-50' : ''
+                                            }`}
+                                        />
+                                        {!isSubmitting && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveImage(index)}
+                                                className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Drag and Drop Overlay */}
+                        {isDragOver && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/80 backdrop-blur-sm dark:border-blue-400 dark:bg-blue-950/80">
+                                <div className="text-center">
+                                    <ImagePlus className="mx-auto h-12 w-12 text-blue-500 dark:text-blue-400" />
+                                    <p className="mt-2 text-lg font-medium text-blue-700 dark:text-blue-300">Lepaskan gambar di sini</p>
+                                    <p className="text-sm text-blue-600 dark:text-blue-400">Gambar akan ditambahkan ke pesan Anda</p>
+                                </div>
+                            </div>
+                        )}
+
                         <form onSubmit={handleSendMessage} className="flex gap-3">
                             <div className="relative flex-1">
                                 <Textarea
@@ -387,18 +602,40 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Image Upload Button */}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isSubmitting}
+                                className="h-[60px] self-end rounded-xl border-gray-200 px-4 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-blue-950"
+                            >
+                                <ImagePlus className="h-5 w-5" />
+                            </Button>
+
                             <Button
                                 type="submit"
-                                disabled={!message.trim() || isSubmitting}
+                                disabled={(!message.trim() && selectedImages.length === 0) || isSubmitting}
                                 className="h-[60px] self-end rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-blue-500/40"
                             >
                                 <Send className="h-5 w-5" />
                             </Button>
                         </form>
-                        <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
-                            Tekan Enter untuk mengirim, Shift+Enter untuk baris baru
-                        </p>
+
+                        {/* Hidden File Input */}
+                        <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
+                        <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                            <p className="flex items-center gap-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+                                Tekan Enter untuk mengirim, Shift+Enter untuk baris baru
+                            </p>
+                            <p className="flex items-center gap-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
+                                Ctrl+V untuk paste gambar dari clipboard (screenshot, snipping tool, dll)
+                            </p>
+                        </div>
                     </div>
                 )}
 

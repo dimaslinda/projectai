@@ -20,45 +20,77 @@ class AIService
         $this->openaiModel = config('ai.openai_model', 'gpt-3.5-turbo');
     }
 
-    public function generateResponse(string $message, string $persona, array $chatHistory = [], string $chatType = 'persona'): string
+    public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
         try {
             // Get persona-specific provider or fallback to default
             $personaProviders = config('ai.persona_providers', []);
-            $selectedProvider = $personaProviders[$persona] ?? $this->provider;
+            $selectedProvider = $persona ? ($personaProviders[$persona] ?? $this->provider) : $this->provider;
             
             return match ($selectedProvider) {
-                'gemini' => $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType),
-                'openai' => $this->generateOpenAIResponse($message, $persona, $chatHistory, $chatType),
-                default => $this->generateFallbackResponse($message, $persona, $chatType)
+                'gemini' => $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType, $imageUrls),
+                'openai' => $this->generateOpenAIResponse($message, $persona, $chatHistory, $chatType, $imageUrls),
+                default => $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls)
             };
         } catch (\Exception $e) {
             Log::error('AI Service Error: ' . $e->getMessage());
-            return $this->generateFallbackResponse($message, $persona, $chatType);
+            return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
         }
     }
 
-    private function generateGeminiResponse(string $message, string $persona, array $chatHistory = [], string $chatType = 'persona'): string
+    private function generateGeminiResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
         if (empty($this->geminiApiKey) || $this->geminiApiKey === 'your_gemini_api_key_here') {
-            return $this->generateFallbackResponse($message, $persona, $chatType);
+            return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
         }
 
-        // Get persona-specific Gemini model
+        // Get persona-specific Gemini model - use vision model if images are present
         $geminiModels = config('ai.gemini_models', []);
-        $selectedModel = $geminiModels[$persona] ?? 'gemini-pro';
+        $selectedModel = $persona ? ($geminiModels[$persona] ?? 'gemini-2.5-pro') : 'gemini-2.5-pro';
+        
+        // Use vision model if images are provided - gemini-2.5-pro supports multimodal natively
+        if (!empty($imageUrls)) {
+            $selectedModel = 'gemini-2.5-pro';
+        }
 
         $systemPrompt = $this->getPersonaPrompt($persona, $chatType);
         $contextPrompt = $this->buildContextFromHistory($chatHistory);
-        $fullPrompt = $systemPrompt . $contextPrompt . "\n\nPertanyaan: " . $message;
+        
+        // Prepare content parts
+        $parts = [];
+        
+        // Add text content
+        $textContent = $systemPrompt . $contextPrompt . "\n\nPertanyaan: " . $message;
+        if (!empty($imageUrls)) {
+            $textContent .= "\n\nSilakan analisis gambar yang diberikan dan berikan respons yang relevan sesuai dengan peran Anda sebagai " . $persona . ".";
+        }
+        $parts[] = ['text' => $textContent];
+        
+        // Add images if provided
+        if (!empty($imageUrls)) {
+            foreach ($imageUrls as $imageUrl) {
+                try {
+                    // Convert image URL to base64
+                    $imageData = $this->getImageAsBase64($imageUrl);
+                    if ($imageData) {
+                        $parts[] = [
+                            'inline_data' => [
+                                'mime_type' => $imageData['mime_type'],
+                                'data' => $imageData['data']
+                            ]
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to process image for Gemini: ' . $e->getMessage());
+                }
+            }
+        }
 
         $response = Http::timeout(30)
             ->post("https://generativelanguage.googleapis.com/v1beta/models/{$selectedModel}:generateContent?key={$this->geminiApiKey}", [
                 'contents' => [
                     [
-                        'parts' => [
-                            ['text' => $fullPrompt]
-                        ]
+                        'parts' => $parts
                     ]
                 ],
                 'generationConfig' => [
@@ -105,15 +137,15 @@ class AIService
         
         if ($errorCode === 503) {
             // Model overloaded - try with retry or fallback to different model
-            Log::warning('Gemini model overloaded, attempting retry with gemini-pro');
+            Log::warning('Gemini model overloaded, attempting retry with gemini-2.0-flash-exp');
             
-            // Try with gemini-1.5-pro as fallback
+            // Try with gemini-2.0-flash-exp as fallback
              $fallbackResponse = Http::timeout(30)
-                 ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={$this->geminiApiKey}", [
+                 ->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={$this->geminiApiKey}", [
                     'contents' => [
                         [
                             'parts' => [
-                                ['text' => $fullPrompt]
+                                ['text' => $textContent]
                             ]
                         ]
                     ],
@@ -150,18 +182,23 @@ class AIService
         throw new \Exception("Gemini API request failed (HTTP {$response->status()}): {$errorMessage}");
     }
 
-    private function generateOpenAIResponse(string $message, string $persona, array $chatHistory = [], string $chatType = 'persona'): string
+    private function generateOpenAIResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
         if (empty($this->openaiApiKey) || $this->openaiApiKey === 'your_openai_api_key_here') {
-            return $this->generateFallbackResponse($message, $persona, $chatType);
+            return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
         }
 
-        // Get persona-specific OpenAI model
+        // Get persona-specific OpenAI model - use vision model if images are present
         $openaiModels = config('ai.openai_models', []);
-        $selectedModel = $openaiModels[$persona] ?? $this->openaiModel;
+        $selectedModel = $persona ? ($openaiModels[$persona] ?? $this->openaiModel) : $this->openaiModel;
+        
+        // Use vision model if images are provided
+        if (!empty($imageUrls)) {
+            $selectedModel = 'gpt-4-vision-preview';
+        }
 
         $systemPrompt = $this->getPersonaPrompt($persona, $chatType);
-        $messages = $this->buildOpenAIMessages($systemPrompt, $chatHistory, $message);
+        $messages = $this->buildOpenAIMessages($systemPrompt, $chatHistory, $message, $imageUrls);
 
         $response = Http::timeout(30)
             ->withHeaders([
@@ -172,7 +209,7 @@ class AIService
                 'model' => $selectedModel,
                 'messages' => $messages,
                 'temperature' => 0.7,
-                'max_tokens' => 1024,
+                'max_tokens' => 2048,
             ]);
 
         if ($response->successful()) {
@@ -183,10 +220,10 @@ class AIService
         throw new \Exception('OpenAI API request failed: ' . $response->body());
     }
 
-    private function getPersonaPrompt(string $persona, string $chatType = 'persona'): string
+    private function getPersonaPrompt(?string $persona, string $chatType = 'persona'): string
     {
         // Global chat type - general AI assistant
-        if ($chatType === 'global') {
+        if ($chatType === 'global' || $persona === null) {
             return 'Anda adalah asisten AI yang cerdas dan membantu. Anda dapat membantu dengan berbagai topik dan pertanyaan umum. Berikan jawaban yang informatif, akurat, dan mudah dipahami. Jawab dalam bahasa Indonesia dengan ramah dan profesional.';
         }
 
@@ -209,10 +246,10 @@ class AIService
         return $personas[$persona] ?? 'Anda adalah asisten AI yang membantu dengan kebutuhan teknik dan bisnis. Jawab dalam bahasa Indonesia dengan profesional.';
     }
 
-    private function generateFallbackResponse(string $message, string $persona, string $chatType = 'persona'): string
+    private function generateFallbackResponse(string $message, ?string $persona, string $chatType = 'persona', array $imageUrls = []): string
     {
         // Global chat fallback
-        if ($chatType === 'global') {
+        if ($chatType === 'global' || $persona === null) {
             $roleContext = 'Sebagai asisten AI global, saya dapat membantu Anda dengan berbagai topik dan pertanyaan umum.';
         } else {
             // Persona-specific fallbacks
@@ -236,18 +273,21 @@ class AIService
         
         // Get configured provider and model for this persona
         $personaProviders = config('ai.persona_providers', []);
-        $configuredProvider = $personaProviders[$persona] ?? $this->provider;
+        $configuredProvider = $persona ? ($personaProviders[$persona] ?? $this->provider) : $this->provider;
         
         $configuredModel = 'default';
         if ($configuredProvider === 'openai') {
             $openaiModels = config('ai.openai_models', []);
-            $configuredModel = $openaiModels[$persona] ?? 'gpt-4o';
+            $configuredModel = $persona ? ($openaiModels[$persona] ?? 'gpt-4o') : 'gpt-4o';
         } elseif ($configuredProvider === 'gemini') {
             $geminiModels = config('ai.gemini_models', []);
-            $configuredModel = $geminiModels[$persona] ?? 'gemini-1.5-pro';
+            $configuredModel = $persona ? ($geminiModels[$persona] ?? 'gemini-1.5-pro') : 'gemini-1.5-pro';
         }
         
-        return "$roleContext\n\nMengenai pesan Anda: \"$message\"\n\n[Mode Offline] Persona '$persona' dikonfigurasi menggunakan provider '$configuredProvider' dengan model '$configuredModel'. Saat ini sistem menggunakan respons simulasi. Untuk mengaktifkan AI yang sesungguhnya, silakan konfigurasi API key yang sesuai di file .env";
+        $imageNote = !empty($imageUrls) ? ' (termasuk analisis gambar)' : '';
+        $personaDisplay = $persona ?? 'global';
+        
+        return "$roleContext\n\nMengenai pesan Anda: \"$message\"$imageNote\n\n[Mode Offline] Persona '$personaDisplay' dikonfigurasi menggunakan provider '$configuredProvider' dengan model '$configuredModel'. Saat ini sistem menggunakan respons simulasi. Untuk mengaktifkan AI yang sesungguhnya, silakan konfigurasi API key yang sesuai di file .env";
     }
 
     /**
@@ -277,7 +317,7 @@ class AIService
     /**
      * Build messages array for OpenAI API with chat history
      */
-    private function buildOpenAIMessages(string $systemPrompt, array $chatHistory, string $currentMessage): array
+    private function buildOpenAIMessages(string $systemPrompt, array $chatHistory, string $currentMessage, array $imageUrls = []): array
     {
         $messages = [
             [
@@ -296,12 +336,67 @@ class AIService
             ];
         }
 
-        // Add current message
+        // Add current message with images if provided
+        $currentMessageContent = [];
+        
+        // Add text content
+        $currentMessageContent[] = [
+            'type' => 'text',
+            'text' => $currentMessage
+        ];
+        
+        // Add images if provided
+        if (!empty($imageUrls)) {
+            foreach ($imageUrls as $imageUrl) {
+                $currentMessageContent[] = [
+                    'type' => 'image_url',
+                    'image_url' => [
+                        'url' => $imageUrl
+                    ]
+                ];
+            }
+        }
+        
         $messages[] = [
             'role' => 'user',
-            'content' => $currentMessage
+            'content' => !empty($imageUrls) ? $currentMessageContent : $currentMessage
         ];
 
         return $messages;
+    }
+
+    /**
+     * Convert image URL to base64 for Gemini API
+     */
+    private function getImageAsBase64(string $imageUrl): ?array
+    {
+        try {
+            // Check if it's a local file path
+            if (file_exists($imageUrl)) {
+                $imageData = file_get_contents($imageUrl);
+                $mimeType = mime_content_type($imageUrl);
+            } else {
+                // It's a URL, fetch the image
+                $response = Http::timeout(10)->get($imageUrl);
+                if (!$response->successful()) {
+                    return null;
+                }
+                $imageData = $response->body();
+                $mimeType = $response->header('Content-Type') ?? 'image/jpeg';
+            }
+
+            // Validate that it's an image
+            if (!str_starts_with($mimeType, 'image/')) {
+                return null;
+            }
+
+            return [
+                'data' => base64_encode($imageData),
+                'mime_type' => $mimeType
+            ];
+        } catch (\Exception $e) {
+            Log::error('Failed to convert image to base64: ' . $e->getMessage());
+            return null;
+        }
     }
 }

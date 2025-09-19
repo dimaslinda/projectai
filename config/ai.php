@@ -73,9 +73,9 @@ return [
     ],
 
     'gemini_models' => [
-        'engineer' => env('GEMINI_MODEL_ENGINEER', 'gemini-1.5-pro'), // Fallback from 2.5-pro due to overload
-        'drafter' => env('GEMINI_MODEL_DRAFTER', 'gemini-1.5-pro'),  // Fallback from 2.5-pro due to overload
-        'esr' => env('GEMINI_MODEL_ESR', 'gemini-1.5-pro'),      // Fallback from 2.5-pro due to overload
+        'engineer' => env('GEMINI_MODEL_ENGINEER', 'gemini-2.5-pro'), // Latest stable model
+        'drafter' => env('GEMINI_MODEL_DRAFTER', 'gemini-2.5-pro'),  // Latest stable model
+        'esr' => env('GEMINI_MODEL_ESR', 'gemini-2.5-pro'),      // Latest stable model
     ],
 
 ];

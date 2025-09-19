@@ -118,7 +118,9 @@ class ChatController extends Controller
     public function sendMessage(Request $request, ChatSession $session)
     {
         $request->validate([
-            'message' => 'required|string|max:5000',
+            'message' => 'nullable|string|max:5000',
+            'images' => 'nullable|array|max:5',
+            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max per image
         ]);
 
         $user = auth()->user();
@@ -128,22 +130,50 @@ class ChatController extends Controller
             abort(403, 'Anda hanya dapat mengirim pesan ke sesi chat Anda sendiri.');
         }
 
+        // Validate that either message or images are provided
+        if (empty($request->message) && empty($request->images)) {
+            return back()->withErrors(['message' => 'Pesan atau gambar harus disediakan.']);
+        }
+
+        // Handle image uploads
+        $imageUrls = [];
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $image) {
+                $path = $image->store('chat-images', 'public');
+                $imageUrls[] = asset('storage/' . $path);
+            }
+        }
+
+        // Prepare message content
+        $messageContent = $request->message ?? '';
+        $metadata = [
+            'images' => $imageUrls,
+            'has_images' => !empty($imageUrls),
+        ];
+
         // Save user message
-        ChatHistory::create([
+        $userMessage = ChatHistory::create([
             'user_id' => $user->id,
             'chat_session_id' => $session->id,
-            'message' => $request->message,
+            'message' => $messageContent,
             'sender' => 'user',
+            'metadata' => $metadata,
         ]);
 
         // Get chat history for context
         $chatHistory = $session->chatHistories()
             ->orderBy('created_at', 'asc')
-            ->get(['message', 'sender'])
+            ->get(['message', 'sender', 'metadata'])
             ->toArray();
 
-        // Generate AI response based on persona with context
-        $aiResponse = $this->generateAIResponse($request->message, $session->persona, $chatHistory, $session->chat_type);
+        // Generate AI response based on persona with context and images
+        $aiResponse = $this->generateAIResponse(
+            $messageContent, 
+            $session->persona, 
+            $chatHistory, 
+            $session->chat_type,
+            $imageUrls
+        );
         
         // Save AI response
         ChatHistory::create([
@@ -155,6 +185,7 @@ class ChatController extends Controller
                 'persona' => $session->persona,
                 'chat_type' => $session->chat_type,
                 'timestamp' => now()->toISOString(),
+                'images' => $imageUrls,
             ],
         ]);
 
@@ -202,9 +233,9 @@ class ChatController extends Controller
     /**
      * Generate AI response based on persona with chat history context
      */
-    private function generateAIResponse(string $message, string $persona, array $chatHistory = [], string $chatType = 'persona'): string
+    private function generateAIResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
         $aiService = new AIService();
-        return $aiService->generateResponse($message, $persona, $chatHistory, $chatType);
+        return $aiService->generateResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
     }
 }
