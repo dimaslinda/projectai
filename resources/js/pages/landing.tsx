@@ -227,9 +227,6 @@ export default function Landing() {
                             <Link href="/login">
                                 <Button variant="ghost">Login</Button>
                             </Link>
-                            <Link href="/register">
-                                <Button>Get Started</Button>
-                            </Link>
                         </div>
                     </div>
                 </div>
