@@ -11,6 +11,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
     })->name('dashboard');
+    
+    // Dashboard API routes
+    Route::get('api/dashboard/stats', [App\Http\Controllers\ChatController::class, 'getDashboardStats'])->name('dashboard.stats');
 
     // Chat routes
     Route::prefix('chat')->name('chat.')->group(function () {

@@ -20,7 +20,6 @@ class ChatSession extends Model
         'user_id',
         'title',
         'persona',
-        'chat_type',
         'description',
         'is_shared',
         'shared_with_roles',

@@ -231,6 +231,57 @@ class ChatController extends Controller
     }
 
     /**
+     * Get dashboard statistics
+     */
+    public function getDashboardStats()
+    {
+        $user = auth()->user();
+        
+        // Total chat sessions
+        $totalSessions = ChatSession::where('user_id', $user->id)->count();
+        
+        // Active sessions (with activity in last 7 days)
+        $activeSessions = ChatSession::where('user_id', $user->id)
+            ->where('last_activity_at', '>=', now()->subDays(7))
+            ->count();
+        
+        // Sessions by persona
+        $sessionsByPersona = ChatSession::where('user_id', $user->id)
+            ->selectRaw('persona, COUNT(*) as count')
+            ->groupBy('persona')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [$item->persona ?? 'global' => $item->count];
+            });
+        
+        // Recent sessions
+        $recentSessions = ChatSession::where('user_id', $user->id)
+            ->with(['latestMessage'])
+            ->orderBy('last_activity_at', 'desc')
+            ->limit(5)
+            ->get();
+        
+        // Total messages
+        $totalMessages = ChatHistory::whereIn('chat_session_id', 
+            ChatSession::where('user_id', $user->id)->pluck('id')
+        )->count();
+        
+        // AI messages count
+        $aiMessages = ChatHistory::whereIn('chat_session_id', 
+            ChatSession::where('user_id', $user->id)->pluck('id')
+        )->where('sender', 'ai')->count();
+        
+        return response()->json([
+            'totalSessions' => $totalSessions,
+            'activeSessions' => $activeSessions,
+            'sessionsByPersona' => $sessionsByPersona,
+            'recentSessions' => $recentSessions,
+            'totalMessages' => $totalMessages,
+            'aiMessages' => $aiMessages,
+        ]);
+    }
+
+    /**
      * Generate AI response based on persona with chat history context
      */
     private function generateAIResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
