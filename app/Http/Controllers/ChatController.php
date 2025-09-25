@@ -146,9 +146,9 @@ class ChatController extends Controller
 
         $user = auth()->user();
 
-        // Check if user can send messages to this session
-        if ($session->user_id !== $user->id) {
-            abort(403, 'Anda hanya dapat mengirim pesan ke sesi chat Anda sendiri.');
+        // Check if user can send messages to this session (owner or shared access)
+        if (!$this->canUserEditSession($session, $user)) {
+            abort(403, 'Anda tidak memiliki akses untuk mengirim pesan ke sesi chat ini.');
         }
 
         // Validate that either message, images, or image URLs are provided
@@ -249,8 +249,17 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
-        if ($session->user_id !== $user->id) {
-            abort(403, 'Anda hanya dapat memodifikasi sesi chat Anda sendiri.');
+        // Only the actual owner can toggle sharing, not users with shared access
+        // Use type-safe comparison to handle production data type issues
+        $sessionUserId = $session->user_id;
+        $currentUserId = $user->id;
+        
+        $isOwner = ($sessionUserId === $currentUserId) || 
+                   ((int)$sessionUserId === (int)$currentUserId) || 
+                   ($sessionUserId == $currentUserId);
+        
+        if (!$isOwner) {
+            abort(403, 'Anda hanya dapat memodifikasi pengaturan berbagi sesi chat Anda sendiri.');
         }
 
         $session->update([
@@ -268,7 +277,16 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
-        if ($session->user_id !== $user->id) {
+        // Only the actual owner can delete the session
+        // Use type-safe comparison to handle production data type issues
+        $sessionUserId = $session->user_id;
+        $currentUserId = $user->id;
+        
+        $isOwner = ($sessionUserId === $currentUserId) || 
+                   ((int)$sessionUserId === (int)$currentUserId) || 
+                   ($sessionUserId == $currentUserId);
+        
+        if (!$isOwner) {
             abort(403, 'Anda hanya dapat menghapus sesi chat Anda sendiri.');
         }
 
@@ -445,8 +463,9 @@ class ChatController extends Controller
     }
 
     /**
-     * Production-safe method to check if user can edit session
-     * Handles potential data type mismatches between environments
+     * Check if user can edit/send messages to a session
+     * Uses type-safe comparison to handle production data type issues
+     * Also checks if user can access shared sessions based on their role
      */
     private function canUserEditSession(ChatSession $session, $user): bool
     {
@@ -461,6 +480,9 @@ class ChatController extends Controller
                 'session_user_id_type' => gettype($sessionUserId),
                 'current_user_id' => $currentUserId,
                 'current_user_id_type' => gettype($currentUserId),
+                'user_role' => $user->role,
+                'session_is_shared' => $session->is_shared,
+                'session_shared_with_roles' => $session->shared_with_roles,
                 'method' => 'canUserEditSession',
             ]);
         }
@@ -495,6 +517,18 @@ class ChatController extends Controller
                 'current_user_id_type' => gettype($currentUserId),
                 'environment' => app()->environment(),
             ]);
+            return true;
+        }
+        
+        // Check if user can access shared session based on their role
+        if ($session->canBeViewedByRole($user->role)) {
+            if (app()->environment('production')) {
+                Log::info('canUserEditSession: Access granted via shared session', [
+                    'user_role' => $user->role,
+                    'session_is_shared' => $session->is_shared,
+                    'session_shared_with_roles' => $session->shared_with_roles,
+                ]);
+            }
             return true;
         }
         
