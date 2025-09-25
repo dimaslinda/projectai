@@ -110,10 +110,23 @@ class ChatController extends Controller
             $query->orderBy('created_at', 'asc');
         }]);
 
+        $canEdit = $session->user_id === $user->id;
+        
+        // Debug logging
+        Log::info('Chat Session Show Debug', [
+            'session_id' => $session->id,
+            'session_user_id' => $session->user_id,
+            'current_user_id' => $user->id,
+            'user_role' => $user->role,
+            'can_edit' => $canEdit,
+            'is_shared' => $session->is_shared,
+            'shared_with_roles' => $session->shared_with_roles,
+        ]);
+
         return Inertia::render('Chat/Show', [
             'session' => $session,
             'userRole' => $user->role,
-            'canEdit' => $session->user_id === $user->id,
+            'canEdit' => $canEdit,
         ]);
     }
 

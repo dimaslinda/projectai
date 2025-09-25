@@ -39,6 +39,16 @@ interface ChatShowProps {
 }
 
 export default function ChatShow({ session, canEdit }: ChatShowProps) {
+    // Debug logging for canEdit prop
+    console.log('ChatShow Debug:', {
+        sessionId: session.id,
+        sessionTitle: session.title,
+        sessionUserId: session.user_id,
+        canEdit: canEdit,
+        canEditType: typeof canEdit,
+        canEditValue: JSON.stringify(canEdit)
+    });
+
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
@@ -769,6 +779,13 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                         </div>
                     </div>
                 )}
+
+                {/* Debug Information - Remove this after fixing */}
+                <div className="border-t bg-yellow-50 p-4 text-center">
+                    <p className="text-xs text-yellow-800">
+                        DEBUG: canEdit = {JSON.stringify(canEdit)} (type: {typeof canEdit}) | Session User ID: {session.user_id} | Session ID: {session.id}
+                    </p>
+                </div>
 
                 {!canEdit && (
                     <div className="border-t bg-muted/50 p-4 text-center">
