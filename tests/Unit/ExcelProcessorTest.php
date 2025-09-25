@@ -69,7 +69,7 @@ test('can check timeout approaching', function () {
     expect($result)->toBeFalse();
 
     // Test with old start time (should be approaching timeout)
-    $oldStartTime = microtime(true) - 300; // 5 minutes ago
+    $oldStartTime = microtime(true) - 880; // 880 seconds ago (more than 900-30=870)
     $result = $method->invoke($this->excelProcessor, $oldStartTime, 30);
     expect($result)->toBeTrue();
 });
