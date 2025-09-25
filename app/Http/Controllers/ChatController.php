@@ -8,6 +8,7 @@ use App\Services\AIService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
 {
@@ -83,8 +84,12 @@ class ChatController extends Controller
             'chat_type' => $request->type,
             'persona' => $persona,
             'description' => $request->description,
+            'is_shared' => true, // Enable sharing by default
+            'shared_with_roles' => [$user->role], // Share with user's role
             'last_activity_at' => now(),
         ]);
+
+
 
         return redirect()->route('chat.show', $session);
     }
@@ -189,7 +194,7 @@ class ChatController extends Controller
             }
         } catch (\Exception $e) {
             // Log the error for debugging
-            \Log::error('AI Response Generation Failed', [
+            Log::error('AI Response Generation Failed', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
                 'session_id' => $session->id,
