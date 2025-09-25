@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\ChatSession;
 use App\Models\ChatHistory;
 use App\Services\AIService;
-use App\Helpers\ProductionDebugHelper;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -118,18 +117,8 @@ class ChatController extends Controller
             $query->orderBy('created_at', 'asc');
         }]);
 
-        // Production-safe canEdit logic with type-safe comparison
+        // Check if user can edit this session
         $canEdit = $this->canUserEditSession($session, $user);
-        
-        // Comprehensive production debugging using helper
-        ProductionDebugHelper::logCanEditDebug($session, $user, $canEdit, 'ChatController::show');
-        
-        // Log environment info jika ini adalah masalah canEdit
-        if (!$canEdit) {
-            ProductionDebugHelper::logEnvironmentInfo();
-            $issueSummary = ProductionDebugHelper::createIssueSummary($session, $user);
-            Log::warning('CanEdit Issue Summary', $issueSummary);
-        }
 
         return Inertia::render('Chat/Show', [
             'session' => $session,
@@ -480,20 +469,6 @@ class ChatController extends Controller
         $sessionUserId = $session->user_id;
         $currentUserId = $user->id;
         
-        // Log the comparison attempt for production debugging
-        if (app()->environment('production')) {
-            Log::info('canUserEditSession Debug', [
-                'session_user_id' => $sessionUserId,
-                'session_user_id_type' => gettype($sessionUserId),
-                'current_user_id' => $currentUserId,
-                'current_user_id_type' => gettype($currentUserId),
-                'user_role' => $user->role,
-                'session_is_shared' => $session->is_shared,
-                'session_shared_with_roles' => $session->shared_with_roles,
-                'method' => 'canUserEditSession',
-            ]);
-        }
-        
         // Primary check: Strict comparison (preferred)
         if ($sessionUserId === $currentUserId) {
             return true;
@@ -502,40 +477,17 @@ class ChatController extends Controller
         // Fallback 1: Type-cast both to integers and compare
         // This handles cases where one might be string and other integer
         if ((int)$sessionUserId === (int)$currentUserId) {
-            // Log this fallback usage for monitoring
-            Log::warning('canUserEditSession: Using type-cast fallback', [
-                'session_user_id' => $sessionUserId,
-                'session_user_id_type' => gettype($sessionUserId),
-                'current_user_id' => $currentUserId,
-                'current_user_id_type' => gettype($currentUserId),
-                'environment' => app()->environment(),
-            ]);
             return true;
         }
         
         // Fallback 2: Loose comparison (last resort)
         // This handles edge cases with type coercion
         if ($sessionUserId == $currentUserId) {
-            // Log this fallback usage for monitoring
-            Log::warning('canUserEditSession: Using loose comparison fallback', [
-                'session_user_id' => $sessionUserId,
-                'session_user_id_type' => gettype($sessionUserId),
-                'current_user_id' => $currentUserId,
-                'current_user_id_type' => gettype($currentUserId),
-                'environment' => app()->environment(),
-            ]);
             return true;
         }
         
         // Check if user can access shared session based on their role
         if ($session->canBeViewedByRole($user->role)) {
-            if (app()->environment('production')) {
-                Log::info('canUserEditSession: Access granted via shared session', [
-                    'user_role' => $user->role,
-                    'session_is_shared' => $session->is_shared,
-                    'session_shared_with_roles' => $session->shared_with_roles,
-                ]);
-            }
             return true;
         }
         
