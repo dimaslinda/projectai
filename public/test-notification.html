@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Notifikasi Browser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Test Notifikasi Browser</h1>
+        <p>Tool ini membantu mendiagnosis masalah notifikasi browser di ProjectAI.</p>
+        
+        <div id="status"></div>
+        
+        <div>
+            <button onclick="checkSupport()">Cek Dukungan Browser</button>
+            <button onclick="checkPermission()">Cek Permission</button>
+            <button onclick="requestPermission()">Minta Permission</button>
+            <button onclick="testNotification()">Test Notifikasi</button>
+            <button onclick="testSound()">Test Suara</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            logDiv.textContent += logEntry;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            console.log(message);
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+        }
+
+        function checkSupport() {
+            log('=== Mengecek Dukungan Browser ===');
+            
+            if (!('Notification' in window)) {
+                log('❌ Browser tidak mendukung Notification API', 'error');
+                updateStatus('Browser tidak mendukung notifikasi', 'error');
+                return false;
+            }
+            
+            log('✅ Browser mendukung Notification API');
+            
+            // Check service worker support
+            if ('serviceWorker' in navigator) {
+                log('✅ Browser mendukung Service Worker');
+            } else {
+                log('⚠️ Browser tidak mendukung Service Worker');
+            }
+            
+            // Check audio context support
+            if (window.AudioContext || window.webkitAudioContext) {
+                log('✅ Browser mendukung Web Audio API');
+            } else {
+                log('⚠️ Browser tidak mendukung Web Audio API');
+            }
+            
+            updateStatus('Browser mendukung notifikasi', 'success');
+            return true;
+        }
+
+        function checkPermission() {
+            log('=== Mengecek Permission Status ===');
+            
+            if (!checkSupport()) return;
+            
+            const permission = Notification.permission;
+            log(`Permission status: ${permission}`);
+            
+            switch (permission) {
+                case 'granted':
+                    updateStatus('Permission sudah diberikan', 'success');
+                    break;
+                case 'denied':
+                    updateStatus('Permission ditolak - notifikasi tidak akan berfungsi', 'error');
+                    break;
+                case 'default':
+                    updateStatus('Permission belum diminta', 'warning');
+                    break;
+            }
+        }
+
+        async function requestPermission() {
+            log('=== Meminta Permission ===');
+            
+            if (!checkSupport()) return;
+            
+            if (Notification.permission === 'granted') {
+                log('✅ Permission sudah diberikan sebelumnya');
+                updateStatus('Permission sudah diberikan', 'success');
+                return;
+            }
+            
+            try {
+                log('Meminta permission dari user...');
+                const result = await Notification.requestPermission();
+                log(`Hasil permission: ${result}`);
+                
+                switch (result) {
+                    case 'granted':
+                        updateStatus('Permission berhasil diberikan!', 'success');
+                        break;
+                    case 'denied':
+                        updateStatus('Permission ditolak oleh user', 'error');
+                        break;
+                    case 'default':
+                        updateStatus('User menutup dialog permission', 'warning');
+                        break;
+                }
+            } catch (error) {
+                log(`❌ Error saat meminta permission: ${error.message}`);
+                updateStatus('Error saat meminta permission', 'error');
+            }
+        }
+
+        function testNotification() {
+            log('=== Testing Notifikasi ===');
+            
+            if (!checkSupport()) return;
+            
+            if (Notification.permission !== 'granted') {
+                log('❌ Permission belum diberikan. Silakan minta permission terlebih dahulu.');
+                updateStatus('Permission diperlukan untuk test notifikasi', 'warning');
+                return;
+            }
+            
+            try {
+                log('Membuat notifikasi test...');
+                
+                const notification = new Notification('ProjectAI - Test', {
+                    body: 'Ini adalah test notifikasi dari ProjectAI',
+                    icon: '/favicon.svg',
+                    badge: '/favicon.svg',
+                    tag: 'test-notification',
+                    requireInteraction: false,
+                    silent: false
+                });
+                
+                log('✅ Notifikasi berhasil dibuat');
+                updateStatus('Notifikasi test berhasil ditampilkan', 'success');
+                
+                notification.onclick = () => {
+                    log('👆 User mengklik notifikasi');
+                    window.focus();
+                    notification.close();
+                };
+                
+                notification.onshow = () => {
+                    log('📱 Notifikasi ditampilkan');
+                };
+                
+                notification.onclose = () => {
+                    log('❌ Notifikasi ditutup');
+                };
+                
+                notification.onerror = (error) => {
+                    log(`❌ Error pada notifikasi: ${error}`);
+                };
+                
+                // Auto close after 5 seconds
+                setTimeout(() => {
+                    notification.close();
+                    log('⏰ Notifikasi ditutup otomatis setelah 5 detik');
+                }, 5000);
+                
+            } catch (error) {
+                log(`❌ Error saat membuat notifikasi: ${error.message}`);
+                updateStatus('Error saat membuat notifikasi', 'error');
+            }
+        }
+
+        function testSound() {
+            log('=== Testing Suara ===');
+            
+            try {
+                log('Membuat Web Audio Context...');
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                log('Membuat oscillator...');
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                log('Memutar suara beep...');
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+                
+                oscillator.onended = () => {
+                    log('✅ Suara selesai diputar');
+                    oscillator.disconnect();
+                    gainNode.disconnect();
+                    audioContext.close();
+                };
+                
+                updateStatus('Suara test berhasil diputar', 'success');
+                
+            } catch (error) {
+                log(`❌ Error saat memutar suara: ${error.message}`);
+                updateStatus('Error saat memutar suara', 'error');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+            updateStatus('Log dibersihkan', 'info');
+        }
+
+        // Auto check on page load
+        window.onload = () => {
+            log('=== ProjectAI Notification Tester ===');
+            checkSupport();
+            checkPermission();
+        };
+    </script>
+</body>
+</html>

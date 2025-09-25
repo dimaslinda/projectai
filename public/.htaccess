@@ -1,3 +1,12 @@
+# PHP Upload Configuration for Large Files
+php_value upload_max_filesize 3G
+php_value post_max_size 3G
+php_value max_file_uploads 1000
+php_value memory_limit 1G
+php_value max_execution_time 1800
+php_value max_input_time 1800
+php_value max_input_vars 10000
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes

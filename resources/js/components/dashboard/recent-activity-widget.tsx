@@ -1,10 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@inertiajs/react';
-import { Clock, MessageSquare, ArrowRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { ArrowRight, Clock, MessageSquare } from 'lucide-react';
 
 interface ChatSession {
     id: number;
@@ -25,9 +25,9 @@ interface RecentActivityWidgetProps {
 export function RecentActivityWidget({ recentSessions }: RecentActivityWidgetProps) {
     const formatDate = (dateString: string) => {
         try {
-            return formatDistanceToNow(new Date(dateString), { 
-                addSuffix: true, 
-                locale: id 
+            return formatDistanceToNow(new Date(dateString), {
+                addSuffix: true,
+                locale: id,
             });
         } catch {
             return 'Baru saja';
@@ -36,7 +36,7 @@ export function RecentActivityWidget({ recentSessions }: RecentActivityWidgetPro
 
     const getPersonaBadgeColor = (persona: string | null, chatType: string) => {
         if (chatType === 'global') return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
-        
+
         switch (persona) {
             case 'engineer':
                 return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
@@ -59,9 +59,7 @@ export function RecentActivityWidget({ recentSessions }: RecentActivityWidgetPro
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle className="text-lg font-semibold">Aktivitas Chat Terbaru</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        5 sesi chat terakhir yang diakses
-                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">5 sesi chat terakhir yang diakses</p>
                 </div>
                 <Button variant="outline" size="sm" asChild>
                     <Link href="/chat">
@@ -73,17 +71,11 @@ export function RecentActivityWidget({ recentSessions }: RecentActivityWidgetPro
             <CardContent>
                 {recentSessions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-center">
-                        <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                            Belum ada chat session
-                        </h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            Mulai percakapan pertama Anda dengan AI
-                        </p>
+                        <MessageSquare className="mb-4 h-12 w-12 text-muted-foreground" />
+                        <h3 className="mb-2 text-lg font-medium text-muted-foreground">Belum ada chat session</h3>
+                        <p className="mb-4 text-sm text-muted-foreground">Mulai percakapan pertama Anda dengan AI</p>
                         <Button asChild>
-                            <Link href="/chat">
-                                Mulai Chat Baru
-                            </Link>
+                            <Link href="/chat">Mulai Chat Baru</Link>
                         </Button>
                     </div>
                 ) : (
@@ -91,37 +83,34 @@ export function RecentActivityWidget({ recentSessions }: RecentActivityWidgetPro
                         {recentSessions.map((session) => (
                             <div
                                 key={session.id}
-                                className="flex items-start justify-between p-4 rounded-lg border border-border/50 hover:border-border transition-colors"
+                                className="flex items-start justify-between rounded-lg border border-border/50 p-4 transition-colors hover:border-border"
                             >
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-2">
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-2 flex items-center gap-2">
                                         <Link
                                             href={`/chat/${session.id}`}
-                                            className="font-medium text-foreground hover:text-primary transition-colors truncate"
+                                            className="truncate font-medium text-foreground transition-colors hover:text-primary"
                                         >
                                             {session.title}
                                         </Link>
-                                        <Badge 
-                                            variant="secondary" 
-                                            className={`text-xs ${getPersonaBadgeColor(session.persona, session.chat_type)}`}
-                                        >
+                                        <Badge variant="secondary" className={`text-xs ${getPersonaBadgeColor(session.persona, session.chat_type)}`}>
                                             {getPersonaLabel(session.persona, session.chat_type)}
                                         </Badge>
                                     </div>
-                                    
+
                                     {session.latest_message && (
-                                        <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                                        <p className="mb-2 line-clamp-2 text-sm text-muted-foreground">
                                             {session.latest_message.is_ai ? '🤖 ' : '👤 '}
                                             {session.latest_message.message}
                                         </p>
                                     )}
-                                    
+
                                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                         <Clock className="h-3 w-3" />
                                         {formatDate(session.last_activity_at)}
                                     </div>
                                 </div>
-                                
+
                                 <Button variant="ghost" size="sm" asChild>
                                     <Link href={`/chat/${session.id}`}>
                                         <ArrowRight className="h-4 w-4" />

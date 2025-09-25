@@ -4,7 +4,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, Sid
 import { dashboard } from '@/routes';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutGrid, MessageSquare, Users } from 'lucide-react';
+import { LayoutGrid, MessageSquare, Users, FileSpreadsheet } from 'lucide-react';
 import AppLogo from './app-logo';
 
 export function AppSidebar() {
@@ -22,6 +22,15 @@ export function AppSidebar() {
             href: '/chat',
             icon: MessageSquare,
         },
+        ...(user?.role === 'esr'
+            ? [
+                  {
+                      title: 'Excel Photo Organizer',
+                      href: '/excel/photo-organizer',
+                      icon: FileSpreadsheet,
+                  },
+              ]
+            : []),
         ...(user?.role === 'superadmin'
             ? [
                   {

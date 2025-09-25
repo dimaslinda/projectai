@@ -1,8 +1,9 @@
 import { Head, router } from '@inertiajs/react';
-import { ArrowLeft, Bot, ImagePlus, Send, Share2, Trash2, User, X } from 'lucide-react';
+import { ArrowLeft, Bot, ImagePlus, Send, Settings, Share2, Trash2, User, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import MessageContent from '@/components/MessageContent';
+import NotificationSettings from '@/components/NotificationSettings';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useNotification } from '@/hooks/useNotification';
 import AppLayout from '@/layouts/app-layout';
 import { type ChatHistory, type ChatSession } from '@/types';
 
@@ -42,9 +44,14 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [previousMessageCount, setPreviousMessageCount] = useState(session.chat_histories.length);
+    const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Hook untuk notifikasi
+    const { showAIResponseNotification } = useNotification();
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,6 +60,27 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     useEffect(() => {
         scrollToBottom();
     }, [session.chat_histories, isSubmitting]);
+
+    // Effect untuk mendeteksi response AI baru dan memicu notifikasi
+    useEffect(() => {
+        const currentMessageCount = session.chat_histories.length;
+
+        // Jika ada pesan baru dan bukan sedang submit (artinya response dari AI)
+        if (currentMessageCount > previousMessageCount && !isSubmitting) {
+            const latestMessage = session.chat_histories[currentMessageCount - 1];
+
+            // Pastikan pesan terakhir adalah dari AI (bukan user)
+            if (latestMessage && latestMessage.sender === 'ai') {
+                // Delay sedikit untuk memastikan UI sudah terupdate
+                setTimeout(() => {
+                    showAIResponseNotification();
+                }, 500);
+            }
+        }
+
+        // Update previous message count
+        setPreviousMessageCount(currentMessageCount);
+    }, [session.chat_histories, isSubmitting, previousMessageCount, showAIResponseNotification]);
 
     useEffect(() => {
         const handlePaste = (e: ClipboardEvent) => {
@@ -68,26 +96,52 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         };
     }, []);
 
-    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
-        const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    // Enhanced file handling functions from PhotoOrganizer
+    const validateFile = (file: File): { valid: boolean; error?: string } => {
+        // Check file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            return { valid: false, error: `File ${file.name}: Tipe file tidak didukung. Hanya JPG, PNG, GIF, dan WebP yang diizinkan.` };
+        }
 
-        if (imageFiles.length > 0) {
-            setSelectedImages((prev) => [...prev, ...imageFiles]);
+        // Check file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            return { valid: false, error: `File ${file.name}: Ukuran file terlalu besar. Maksimal 10MB.` };
+        }
 
-            // Create previews
-            imageFiles.forEach((file) => {
+        return { valid: true };
+    };
+
+    const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || []);
+        const validFiles: File[] = [];
+        const errors: string[] = [];
+
+        files.forEach((file) => {
+            const validation = validateFile(file);
+            if (validation.valid) {
+                validFiles.push(file);
+            } else {
+                errors.push(validation.error!);
+            }
+        });
+
+        if (errors.length > 0) {
+            alert('Beberapa file tidak valid:\n' + errors.join('\n'));
+        }
+
+        if (validFiles.length > 0) {
+            setSelectedImages((prev) => [...prev, ...validFiles]);
+
+            // Create previews for valid files
+            validFiles.forEach((file) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     setImagePreviews((prev) => [...prev, e.target?.result as string]);
                 };
                 reader.readAsDataURL(file);
             });
-        }
-
-        // Reset file input
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
         }
     };
 
@@ -122,13 +176,27 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         setIsDragOver(false);
 
         const files = Array.from(e.dataTransfer.files);
-        const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+        const validFiles: File[] = [];
+        const errors: string[] = [];
 
-        if (imageFiles.length > 0) {
-            setSelectedImages((prev) => [...prev, ...imageFiles]);
+        files.forEach((file) => {
+            const validation = validateFile(file);
+            if (validation.valid) {
+                validFiles.push(file);
+            } else {
+                errors.push(validation.error!);
+            }
+        });
+
+        if (errors.length > 0) {
+            alert('Beberapa file tidak valid:\n' + errors.join('\n'));
+        }
+
+        if (validFiles.length > 0) {
+            setSelectedImages((prev) => [...prev, ...validFiles]);
 
             // Create previews
-            imageFiles.forEach((file) => {
+            validFiles.forEach((file) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     setImagePreviews((prev) => [...prev, e.target?.result as string]);
@@ -151,6 +219,12 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
             imageItems.forEach((item) => {
                 const file = item.getAsFile();
                 if (file) {
+                    const validation = validateFile(file);
+                    if (!validation.valid) {
+                        alert(validation.error!);
+                        return;
+                    }
+
                     // Add to selected images
                     setSelectedImages((prev) => [...prev, file]);
 
@@ -228,6 +302,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         return new Date(dateString).toLocaleTimeString('id-ID', {
             hour: '2-digit',
             minute: '2-digit',
+            timeZone: 'Asia/Jakarta',
         });
     };
 
@@ -254,7 +329,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         >
             <Head title={`Chat: ${session.title}`} />
 
-            <div className="flex h-[calc(100vh-12rem)] flex-col">
+            <div className="flex h-[calc(100vh-4rem)] flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-gray-200 bg-white/80 p-6 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/80">
                     <div className="flex items-center gap-6">
@@ -288,8 +363,8 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                                 variant="outline"
                                                 className={`cursor-help shadow-sm ${
                                                     session.chat_type === 'global'
-                                                        ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950'
-                                                        : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950'
+                                                        ? 'border-accent-foreground/20 bg-accent text-accent-foreground'
+                                                        : 'border-primary/30 bg-primary/10 text-primary'
                                                 }`}
                                             >
                                                 {session.chat_type === 'global' ? 'Global Chat' : 'Persona Chat'}
@@ -305,10 +380,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     </Tooltip>
                                 </TooltipProvider>
                                 {session.is_shared && (
-                                    <Badge
-                                        variant="outline"
-                                        className="border-blue-200 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-800 dark:bg-blue-950"
-                                    >
+                                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
                                         <Share2 className="mr-1 h-3 w-3" />
                                         Dibagikan
                                     </Badge>
@@ -322,8 +394,18 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => setShowNotificationSettings(true)}
+                                className="rounded-xl border-border text-muted-foreground shadow-sm transition-all duration-200 hover:border-border/80 hover:bg-accent hover:text-accent-foreground"
+                            >
+                                <Settings className="mr-2 h-4 w-4" />
+                                Notifikasi
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={handleToggleSharing}
-                                className="rounded-xl border-blue-200 text-blue-600 shadow-sm transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950"
+                                className="rounded-xl border-primary/30 text-primary shadow-sm transition-all duration-200 hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
                             >
                                 <Share2 className="mr-2 h-4 w-4" />
                                 {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
@@ -334,7 +416,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        className="rounded-xl border-red-200 text-red-600 shadow-sm transition-all duration-200 hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                                        className="rounded-xl border-destructive/30 text-destructive shadow-sm transition-all duration-200 hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
                                         Hapus
@@ -352,7 +434,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
                                         <AlertDialogAction
                                             onClick={handleDeleteSession}
-                                            className="rounded-xl bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/25 transition-all duration-200 hover:from-red-600 hover:to-red-700 hover:shadow-red-500/40"
+                                            className="rounded-xl bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground shadow-lg shadow-destructive/25 transition-all duration-200 hover:from-destructive/90 hover:to-destructive hover:shadow-destructive/40"
                                         >
                                             Hapus
                                         </AlertDialogAction>
@@ -385,15 +467,15 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             >
                                 {chat.sender === 'ai' && (
                                     <div className="flex flex-col items-center gap-1">
-                                        <Avatar className="h-10 w-10 shadow-md ring-2 ring-blue-100 dark:ring-blue-900">
-                                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                                        <Avatar className="h-10 w-10 shadow-md ring-2 ring-primary/20 dark:ring-primary/30">
+                                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/90 text-primary-foreground">
                                                 <Bot className="h-5 w-5" />
                                             </AvatarFallback>
                                         </Avatar>
                                         {session.chat_type === 'persona' && session.persona && (
                                             <Badge
                                                 variant="secondary"
-                                                className="border-purple-200 bg-purple-100 px-2 py-0.5 text-xs text-purple-700 duration-300 animate-in fade-in-50 dark:border-purple-800 dark:bg-purple-900 dark:text-purple-300"
+                                                className="border-accent-foreground/20 bg-accent px-2 py-0.5 text-xs text-accent-foreground duration-300 animate-in fade-in-50"
                                             >
                                                 {session.persona}
                                             </Badge>
@@ -405,10 +487,10 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     <div
                                         className={`group relative ${
                                             chat.sender === 'user'
-                                                ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25'
-                                                : 'border border-gray-200 bg-white shadow-lg shadow-gray-500/10 dark:border-gray-700 dark:bg-gray-800'
+                                                ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg shadow-primary/25'
+                                                : 'border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/20'
                                         } rounded-2xl p-4 transition-all duration-200 hover:shadow-xl ${
-                                            chat.sender === 'user' ? 'hover:shadow-blue-500/30' : 'hover:shadow-gray-500/20'
+                                            chat.sender === 'user' ? 'hover:shadow-primary/30' : 'hover:shadow-black/10 dark:hover:shadow-black/30'
                                         }`}
                                     >
                                         {chat.sender === 'user' ? (
@@ -454,11 +536,11 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         )}
                                         <p
                                             className={`mt-3 flex items-center gap-1 text-xs ${
-                                                chat.sender === 'user' ? 'text-blue-100' : 'text-muted-foreground'
+                                                chat.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
                                             }`}
                                         >
                                             <span
-                                                className={`h-1.5 w-1.5 rounded-full ${chat.sender === 'user' ? 'bg-blue-200' : 'bg-gray-400'}`}
+                                                className={`h-1.5 w-1.5 rounded-full ${chat.sender === 'user' ? 'bg-primary-foreground/50' : 'bg-muted-foreground/50'}`}
                                             ></span>
                                             {formatTime(chat.created_at)}
                                         </p>
@@ -466,8 +548,8 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 </div>
 
                                 {chat.sender === 'user' && (
-                                    <Avatar className="mt-1 h-10 w-10 shadow-md ring-2 ring-green-100 dark:ring-green-900">
-                                        <AvatarFallback className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+                                    <Avatar className="order-2 h-10 w-10 shadow-md ring-2 ring-secondary/20 dark:ring-secondary/30">
+                                        <AvatarFallback className="bg-gradient-to-br from-secondary to-secondary/90 text-secondary-foreground">
                                             <User className="h-5 w-5" />
                                         </AvatarFallback>
                                     </Avatar>
@@ -482,7 +564,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             <div className="flex flex-col items-center gap-1">
                                 <Avatar className="h-10 w-10 shadow-md ring-2 ring-blue-100 dark:ring-blue-900">
                                     <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                                        <Bot className="h-5 w-5 animate-pulse" />
+                                        <img src="/asset/img/Icon.png" alt="AI" className="h-5 w-5 animate-pulse" />
                                     </AvatarFallback>
                                 </Avatar>
                                 {session.chat_type === 'persona' && session.persona && (
@@ -544,39 +626,65 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             </div>
                         )}
 
-                        {/* Image Previews */}
+                        {/* Enhanced Image Previews with better UI */}
                         {imagePreviews.length > 0 && (
-                            <div className="mb-4 flex flex-wrap gap-2">
-                                {imagePreviews.map((preview, index) => (
-                                    <div key={index} className="relative">
-                                        <img
-                                            src={preview}
-                                            alt={`Preview ${index + 1}`}
-                                            className={`h-20 w-20 rounded-lg border border-gray-200 object-cover shadow-sm dark:border-gray-700 ${
-                                                isSubmitting ? 'opacity-50' : ''
-                                            }`}
-                                        />
-                                        {!isSubmitting && (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveImage(index)}
-                                                className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600"
-                                            >
-                                                <X className="h-3 w-3" />
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
+                            <div className="mb-4">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Gambar Terpilih ({imagePreviews.length})</h4>
+                                    {!isSubmitting && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setSelectedImages([]);
+                                                setImagePreviews([]);
+                                            }}
+                                            className="text-xs"
+                                        >
+                                            Hapus Semua
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    {imagePreviews.map((preview, index) => (
+                                        <div key={index} className="group relative">
+                                            <img
+                                                src={preview}
+                                                alt={`Preview ${index + 1}`}
+                                                className={`h-24 w-24 rounded-lg border-2 border-gray-200 object-cover shadow-sm transition-all duration-200 dark:border-gray-700 ${
+                                                    isSubmitting ? 'opacity-50' : 'group-hover:border-blue-300'
+                                                }`}
+                                            />
+                                            {!isSubmitting && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveImage(index)}
+                                                    className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 hover:bg-red-600"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                            <div className="absolute right-1 bottom-1 left-1 rounded bg-black/50 px-1 py-0.5 text-xs text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                                                {selectedImages[index]?.name?.substring(0, 15)}...
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 
-                        {/* Drag and Drop Overlay */}
+                        {/* Enhanced Drag and Drop Overlay */}
                         {isDragOver && (
-                            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/80 backdrop-blur-sm dark:border-blue-400 dark:bg-blue-950/80">
-                                <div className="text-center">
-                                    <ImagePlus className="mx-auto h-12 w-12 text-blue-500 dark:text-blue-400" />
-                                    <p className="mt-2 text-lg font-medium text-blue-700 dark:text-blue-300">Lepaskan gambar di sini</p>
-                                    <p className="text-sm text-blue-600 dark:text-blue-400">Gambar akan ditambahkan ke pesan Anda</p>
+                            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-500 bg-blue-50/95 backdrop-blur-sm dark:border-blue-400 dark:bg-blue-950/95">
+                                <div className="text-center duration-200 animate-in fade-in-50 zoom-in-95">
+                                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                                        <ImagePlus className="h-10 w-10 text-blue-600 dark:text-blue-400" />
+                                    </div>
+                                    <p className="text-xl font-semibold text-blue-700 dark:text-blue-300">Lepaskan file di sini</p>
+                                    <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+                                        Mendukung JPG, PNG, GIF, WebP (maks. 10MB per file)
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -603,38 +711,61 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 )}
                             </div>
 
-                            {/* Image Upload Button */}
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isSubmitting}
-                                className="h-[60px] self-end rounded-xl border-gray-200 px-4 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-blue-950"
-                            >
-                                <ImagePlus className="h-5 w-5" />
-                            </Button>
+                            {/* Enhanced Upload Buttons */}
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isSubmitting}
+                                    className="h-[60px] rounded-xl border-gray-200 px-3 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-blue-950"
+                                    title="Pilih file gambar"
+                                >
+                                    <ImagePlus className="h-5 w-5" />
+                                </Button>
+                            </div>
 
                             <Button
                                 type="submit"
                                 disabled={(!message.trim() && selectedImages.length === 0) || isSubmitting}
-                                className="h-[60px] self-end rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-blue-500/40"
+                                className="h-[60px] self-end rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-blue-500/40 disabled:opacity-50"
                             >
                                 <Send className="h-5 w-5" />
                             </Button>
                         </form>
 
                         {/* Hidden File Input */}
-                        <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
-                        <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                            <p className="flex items-center gap-2">
-                                <span className="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
-                                Tekan Enter untuk mengirim, Shift+Enter untuk baris baru
-                            </p>
-                            <p className="flex items-center gap-2">
-                                <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
-                                Ctrl+V untuk paste gambar dari clipboard (screenshot, snipping tool, dll)
-                            </p>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                            multiple
+                            onChange={handleImageSelect}
+                            className="hidden"
+                        />
+
+                        {/* Enhanced Help Text */}
+                        <div className="mt-4 space-y-2 rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
+                            <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300">💡 Tips Upload Gambar:</h5>
+                            <div className="grid grid-cols-1 gap-1 text-xs text-gray-600 md:grid-cols-2 dark:text-gray-400">
+                                <p className="flex items-center gap-2">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
+                                    Tekan Enter untuk kirim, Shift+Enter untuk baris baru
+                                </p>
+                                <p className="flex items-center gap-2">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                                    Ctrl+V untuk paste gambar dari clipboard
+                                </p>
+                                <p className="flex items-center gap-2">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-purple-400"></span>
+                                    Drag & drop file atau gunakan tombol upload
+                                </p>
+                                <p className="flex items-center gap-2">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-orange-400"></span>
+                                    Format: JPG, PNG, GIF, WebP • Maks: 10MB/file
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -647,6 +778,9 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                     </div>
                 )}
             </div>
+
+            {/* Notification Settings Dialog */}
+            <NotificationSettings open={showNotificationSettings} onOpenChange={setShowNotificationSettings} />
         </AppLayout>
     );
 }

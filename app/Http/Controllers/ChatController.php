@@ -17,7 +17,7 @@ class ChatController extends Controller
     public function index(): Response
     {
         $user = auth()->user();
-        
+
         // Get user's chat sessions (both persona and global)
         $mySessions = ChatSession::where('user_id', $user->id)
             ->with(['latestMessage', 'user'])
@@ -45,7 +45,7 @@ class ChatController extends Controller
     public function store(Request $request)
     {
         $user = auth()->user();
-        
+
         $request->validate([
             'title' => [
                 'required',
@@ -55,7 +55,7 @@ class ChatController extends Controller
                     $exists = ChatSession::where('user_id', $user->id)
                         ->where('title', $value)
                         ->exists();
-                    
+
                     if ($exists) {
                         $fail('Judul sesi sudah ada. Silakan gunakan judul yang berbeda.');
                     }
@@ -70,7 +70,7 @@ class ChatController extends Controller
         if ($request->type === 'persona') {
             // For persona chat, automatically use user's role as persona
             $persona = $user->role;
-            
+
             // Validate that user role is a valid persona
             if (!in_array($persona, ['engineer', 'drafter', 'esr'])) {
                 return back()->withErrors(['type' => 'Role Anda tidak memiliki persona yang sesuai untuk chat persona.']);
@@ -95,7 +95,7 @@ class ChatController extends Controller
     public function show(ChatSession $session): Response
     {
         $user = auth()->user();
-        
+
         // Check if user can view this session
         if ($session->user_id !== $user->id && !$session->canBeViewedByRole($user->role)) {
             abort(403, 'Anda tidak memiliki izin untuk melihat sesi chat ini.');
@@ -120,19 +120,21 @@ class ChatController extends Controller
         $request->validate([
             'message' => 'nullable|string|max:5000',
             'images' => 'nullable|array|max:5',
-            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240', // 10MB max per image
+            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp,svg|max:10240', // 10MB max per image, SVG now supported
+            'image_urls' => 'nullable|array|max:10',
+            'image_urls.*' => 'url|max:2048',
         ]);
 
         $user = auth()->user();
-        
+
         // Check if user can send messages to this session
         if ($session->user_id !== $user->id) {
             abort(403, 'Anda hanya dapat mengirim pesan ke sesi chat Anda sendiri.');
         }
 
-        // Validate that either message or images are provided
-        if (empty($request->message) && empty($request->images)) {
-            return back()->withErrors(['message' => 'Pesan atau gambar harus disediakan.']);
+        // Validate that either message, images, or image URLs are provided
+        if (empty($request->message) && empty($request->images) && empty($request->image_urls)) {
+            return back()->withErrors(['message' => 'Pesan, gambar, atau URL gambar harus disediakan.']);
         }
 
         // Handle image uploads
@@ -142,6 +144,11 @@ class ChatController extends Controller
                 $path = $image->store('chat-images', 'public');
                 $imageUrls[] = asset('storage/' . $path);
             }
+        }
+
+        // Add image URLs from request
+        if ($request->has('image_urls') && is_array($request->image_urls)) {
+            $imageUrls = array_merge($imageUrls, $request->image_urls);
         }
 
         // Prepare message content
@@ -167,15 +174,35 @@ class ChatController extends Controller
             ->toArray();
 
         // Generate AI response based on persona with context and images
-        $aiResponse = $this->generateAIResponse(
-            $messageContent, 
-            $session->persona, 
-            $chatHistory, 
-            $session->chat_type,
-            $imageUrls
-        );
-        
-        // Save AI response
+        try {
+            $aiResponse = $this->generateAIResponse(
+                $messageContent,
+                $session->persona,
+                $chatHistory,
+                $session->chat_type,
+                $imageUrls
+            );
+
+            // Check if response is empty or null
+            if (empty(trim($aiResponse))) {
+                $aiResponse = $this->getErrorMessage('empty_response', $session->persona);
+            }
+        } catch (\Exception $e) {
+            // Log the error for debugging
+            \Log::error('AI Response Generation Failed', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+                'session_id' => $session->id,
+                'persona' => $session->persona,
+                'message_length' => strlen($messageContent),
+                'has_images' => !empty($imageUrls)
+            ]);
+
+            // Generate user-friendly error message
+            $aiResponse = $this->getErrorMessage('generation_failed', $session->persona, $e->getMessage());
+        }
+
+        // Save AI response (including error messages)
         ChatHistory::create([
             'user_id' => $user->id,
             'chat_session_id' => $session->id,
@@ -186,6 +213,7 @@ class ChatController extends Controller
                 'chat_type' => $session->chat_type,
                 'timestamp' => now()->toISOString(),
                 'images' => $imageUrls,
+                'is_error' => strpos($aiResponse, 'Maaf, saya mengalami kesulitan') === 0,
             ],
         ]);
 
@@ -201,7 +229,7 @@ class ChatController extends Controller
     public function toggleSharing(ChatSession $session)
     {
         $user = auth()->user();
-        
+
         if ($session->user_id !== $user->id) {
             abort(403, 'Anda hanya dapat memodifikasi sesi chat Anda sendiri.');
         }
@@ -220,7 +248,7 @@ class ChatController extends Controller
     public function destroy(ChatSession $session)
     {
         $user = auth()->user();
-        
+
         if ($session->user_id !== $user->id) {
             abort(403, 'Anda hanya dapat menghapus sesi chat Anda sendiri.');
         }
@@ -231,20 +259,51 @@ class ChatController extends Controller
     }
 
     /**
+     * Delete multiple chat sessions
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $request->validate([
+            'session_ids' => 'required|array|min:1',
+            'session_ids.*' => 'integer|exists:chat_sessions,id',
+        ]);
+
+        $user = auth()->user();
+
+        // Get sessions that belong to the user
+        $sessions = ChatSession::whereIn('id', $request->session_ids)
+            ->where('user_id', $user->id)
+            ->get();
+
+        if ($sessions->count() !== count($request->session_ids)) {
+            abort(403, 'Anda hanya dapat menghapus sesi chat Anda sendiri.');
+        }
+
+        $deletedCount = $sessions->count();
+        
+        // Delete all sessions
+        ChatSession::whereIn('id', $request->session_ids)
+            ->where('user_id', $user->id)
+            ->delete();
+
+        return back()->with('message', "Berhasil menghapus {$deletedCount} sesi chat.");
+    }
+
+    /**
      * Get dashboard statistics
      */
     public function getDashboardStats()
     {
         $user = auth()->user();
-        
+
         // Total chat sessions
         $totalSessions = ChatSession::where('user_id', $user->id)->count();
-        
+
         // Active sessions (with activity in last 7 days)
         $activeSessions = ChatSession::where('user_id', $user->id)
             ->where('last_activity_at', '>=', now()->subDays(7))
             ->count();
-        
+
         // Sessions by persona
         $sessionsByPersona = ChatSession::where('user_id', $user->id)
             ->selectRaw('persona, COUNT(*) as count')
@@ -253,24 +312,26 @@ class ChatController extends Controller
             ->mapWithKeys(function ($item) {
                 return [$item->persona ?? 'global' => $item->count];
             });
-        
+
         // Recent sessions
         $recentSessions = ChatSession::where('user_id', $user->id)
             ->with(['latestMessage'])
             ->orderBy('last_activity_at', 'desc')
             ->limit(5)
             ->get();
-        
+
         // Total messages
-        $totalMessages = ChatHistory::whereIn('chat_session_id', 
+        $totalMessages = ChatHistory::whereIn(
+            'chat_session_id',
             ChatSession::where('user_id', $user->id)->pluck('id')
         )->count();
-        
+
         // AI messages count
-        $aiMessages = ChatHistory::whereIn('chat_session_id', 
+        $aiMessages = ChatHistory::whereIn(
+            'chat_session_id',
             ChatSession::where('user_id', $user->id)->pluck('id')
         )->where('sender', 'ai')->count();
-        
+
         return response()->json([
             'totalSessions' => $totalSessions,
             'activeSessions' => $activeSessions,
@@ -286,7 +347,82 @@ class ChatController extends Controller
      */
     private function generateAIResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
+        // Set unlimited execution time for AI processing
+        set_time_limit(0);
+
         $aiService = new AIService();
-        return $aiService->generateResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
+        $response = $aiService->generateResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
+
+        return $response;
     }
+
+    /**
+     * Generate user-friendly error messages for different failure scenarios
+     */
+    private function getErrorMessage(string $errorType, ?string $persona = null, string $technicalError = ''): string
+    {
+        $personaName = $this->getPersonaDisplayName($persona);
+        
+        switch ($errorType) {
+            case 'empty_response':
+                return "Maaf, saya mengalami kesulitan dalam memproses permintaan Anda saat ini. " .
+                       "Sebagai {$personaName}, saya tidak dapat memberikan respons yang memadai untuk pertanyaan ini. " .
+                       "Silakan coba dengan pertanyaan yang lebih spesifik atau coba lagi dalam beberapa saat.";
+                       
+            case 'generation_failed':
+                $baseMessage = "Maaf, saya mengalami kesulitan teknis dalam memproses permintaan Anda. ";
+                
+                // Provide specific guidance based on technical error
+                if (strpos($technicalError, 'timeout') !== false || strpos($technicalError, 'cURL error 28') !== false) {
+                    $baseMessage .= "Sistem sedang mengalami keterlambatan respons. ";
+                } elseif (strpos($technicalError, 'API') !== false) {
+                    $baseMessage .= "Layanan AI sedang mengalami gangguan. ";
+                } elseif (strpos($technicalError, 'image') !== false) {
+                    $baseMessage .= "Terjadi masalah dalam memproses gambar yang Anda kirim. ";
+                } elseif (strpos($technicalError, 'token') !== false || strpos($technicalError, 'MAX_TOKENS') !== false) {
+                    $baseMessage .= "Permintaan Anda terlalu kompleks untuk diproses sekaligus. ";
+                }
+                
+                $baseMessage .= "Sebagai {$personaName}, saya menyarankan untuk:\n\n";
+                $baseMessage .= "• Mencoba dengan pertanyaan yang lebih sederhana\n";
+                $baseMessage .= "• Mengurangi jumlah gambar jika ada\n";
+                $baseMessage .= "• Mencoba lagi dalam beberapa menit\n\n";
+                $baseMessage .= "Jika masalah berlanjut, silakan hubungi administrator sistem.";
+                
+                return $baseMessage;
+                
+            case 'image_processing_failed':
+                return "Maaf, saya mengalami kesulitan dalam memproses gambar yang Anda kirim. " .
+                       "Sebagai {$personaName}, saya menyarankan untuk:\n\n" .
+                       "• Pastikan gambar dalam format yang didukung (JPG, PNG, GIF, SVG)\n" .
+                       "• Ukuran gambar tidak terlalu besar (maksimal 10MB)\n" .
+                       "• Coba kirim gambar satu per satu\n\n" .
+                       "Silakan coba kirim ulang gambar atau ajukan pertanyaan tanpa gambar.";
+                       
+            default:
+                return "Maaf, saya mengalami kesulitan dalam memproses permintaan Anda saat ini. " .
+                       "Sebagai {$personaName}, silakan coba lagi dalam beberapa saat atau hubungi administrator jika masalah berlanjut.";
+        }
+    }
+
+    /**
+     * Get display name for persona
+     */
+    private function getPersonaDisplayName(?string $persona): string
+    {
+        $personaNames = [
+            'engineer' => 'Insinyur Sipil',
+            'drafter' => 'Drafter Teknis',
+            'esr' => 'Spesialis Tower Survey',
+            'hr' => 'Spesialis Human Resources',
+            'finance' => 'Spesialis Keuangan',
+            'marketing' => 'Spesialis Marketing',
+            'sales' => 'Spesialis Sales',
+            'operations' => 'Spesialis Operations',
+            'legal' => 'Spesialis Legal',
+        ];
+
+        return $personaNames[$persona] ?? 'Asisten AI';
+    }
+
 }

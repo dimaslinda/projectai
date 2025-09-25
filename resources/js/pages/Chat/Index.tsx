@@ -1,5 +1,5 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { Clock, MessageSquare, Plus, Share2, Users } from 'lucide-react';
+import { Head, Link, useForm, router } from '@inertiajs/react';
+import { Clock, MessageSquare, Plus, Share2, Users, Trash2, CheckSquare, Square } from 'lucide-react';
 import { useState } from 'react';
 
 import ChatTypeSelector from '@/components/ChatTypeSelector';
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { getPersonaById } from '@/config/personas';
 import AppLayout from '@/layouts/app-layout';
 import { type ChatSession } from '@/types';
@@ -23,6 +25,8 @@ interface ChatIndexProps {
 export default function ChatIndex({ mySessions, sharedSessions, userRole }: ChatIndexProps) {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [selectedChatType, setSelectedChatType] = useState<'global' | 'persona' | null>(null);
+    const [selectedSessions, setSelectedSessions] = useState<number[]>([]);
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         title: '',
@@ -86,6 +90,39 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
             default:
                 return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
         }
+    };
+
+    const toggleSessionSelection = (sessionId: number) => {
+        setSelectedSessions(prev => 
+            prev.includes(sessionId) 
+                ? prev.filter(id => id !== sessionId)
+                : [...prev, sessionId]
+        );
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedSessions.length === mySessions.length) {
+            setSelectedSessions([]);
+        } else {
+            setSelectedSessions(mySessions.map(session => session.id));
+        }
+    };
+
+    const handleBulkDelete = () => {
+        if (selectedSessions.length === 0) return;
+
+        router.delete('/chat/bulk-delete', {
+            data: { session_ids: selectedSessions },
+            onSuccess: () => {
+                setSelectedSessions([]);
+                setIsSelectionMode(false);
+            },
+        });
+    };
+
+    const toggleSelectionMode = () => {
+        setIsSelectionMode(!isSelectionMode);
+        setSelectedSessions([]);
     };
 
     return (
@@ -181,10 +218,73 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
 
                 {/* My Sessions */}
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                        <MessageSquare className="h-5 w-5" />
-                        <h2 className="text-xl font-semibold">Sesi Chat Saya</h2>
-                        <Badge variant="secondary">{mySessions.length}</Badge>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <MessageSquare className="h-5 w-5" />
+                            <h2 className="text-xl font-semibold">Sesi Chat Saya</h2>
+                            <Badge variant="secondary">{mySessions.length}</Badge>
+                        </div>
+                        
+                        {mySessions.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                {isSelectionMode && (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={toggleSelectAll}
+                                            className="flex items-center gap-2"
+                                        >
+                                            {selectedSessions.length === mySessions.length ? (
+                                                <CheckSquare className="h-4 w-4" />
+                                            ) : (
+                                                <Square className="h-4 w-4" />
+                                            )}
+                                            {selectedSessions.length === mySessions.length ? 'Batalkan Semua' : 'Pilih Semua'}
+                                        </Button>
+                                        
+                                        {selectedSessions.length > 0 && (
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="destructive" size="sm" className="flex items-center gap-2">
+                                                        <Trash2 className="h-4 w-4" />
+                                                        Hapus ({selectedSessions.length})
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent className="rounded-2xl">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle className="text-xl font-bold">Hapus Multiple Sesi Chat</AlertDialogTitle>
+                                                        <AlertDialogDescription className="leading-relaxed text-muted-foreground">
+                                                            Apakah Anda yakin ingin menghapus {selectedSessions.length} sesi chat yang dipilih? 
+                                                            Tindakan ini tidak dapat dibatalkan dan semua riwayat percakapan akan hilang.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter className="gap-3">
+                                                        <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
+                                                        <AlertDialogAction
+                                                            onClick={handleBulkDelete}
+                                                            className="rounded-xl bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/25 transition-all duration-200 hover:from-red-600 hover:to-red-700 hover:shadow-red-500/40"
+                                                        >
+                                                            Hapus Semua
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        )}
+                                        
+                                        <Button variant="outline" size="sm" onClick={toggleSelectionMode}>
+                                            Batal
+                                        </Button>
+                                    </>
+                                )}
+                                
+                                {!isSelectionMode && (
+                                    <Button variant="outline" size="sm" onClick={toggleSelectionMode}>
+                                        Pilih Multiple
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {mySessions.length === 0 ? (
@@ -202,44 +302,96 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
                     ) : (
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                             {mySessions.map((session) => (
-                                <Card key={session.id} className="cursor-pointer transition-shadow hover:shadow-md">
-                                    <Link href={`/chat/${session.id}`}>
-                                        <CardHeader className="pb-3">
-                                            <div className="flex items-start justify-between">
-                                                <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
-                                                {session.is_shared && <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
-                                            </div>
-                                            {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                                <div className="flex items-center gap-1">
-                                                    <Clock className="h-3 w-3" />
-                                                    {formatDate(session.last_activity_at)}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Badge
-                                                        variant="outline"
-                                                        className={`text-xs ${
-                                                            session.chat_type === 'global'
-                                                                ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950'
-                                                                : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950'
-                                                        }`}
-                                                    >
-                                                        {session.chat_type === 'global' ? 'Global' : 'Persona'}
-                                                    </Badge>
-                                                    {session.persona && (
-                                                        <Badge className={getRoleColor(session.persona)} variant="secondary">
-                                                            {session.persona.toUpperCase()}
-                                                        </Badge>
+                                <Card key={session.id} className={`transition-shadow hover:shadow-md ${isSelectionMode ? 'relative' : 'cursor-pointer'} ${selectedSessions.includes(session.id) ? 'ring-2 ring-blue-500' : ''}`}>
+                                    {isSelectionMode && (
+                                        <div className="absolute left-3 top-3 z-10">
+                                            <Checkbox
+                                                checked={selectedSessions.includes(session.id)}
+                                                onCheckedChange={() => toggleSessionSelection(session.id)}
+                                                className="h-5 w-5"
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    <div className={isSelectionMode ? 'pl-8' : ''}>
+                                        {isSelectionMode ? (
+                                            <div>
+                                                <CardHeader className="pb-3">
+                                                    <div className="flex items-start justify-between">
+                                                        <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
+                                                        {session.is_shared && <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                                    </div>
+                                                    {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock className="h-3 w-3" />
+                                                            {formatDate(session.last_activity_at)}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className={`text-xs ${
+                                                                    session.chat_type === 'global'
+                                                                        ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950'
+                                                                        : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950'
+                                                                }`}
+                                                            >
+                                                                {session.chat_type === 'global' ? 'Global' : 'Persona'}
+                                                            </Badge>
+                                                            {session.persona && (
+                                                                <Badge className={getRoleColor(session.persona)} variant="secondary">
+                                                                    {session.persona.toUpperCase()}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {session.latest_message && (
+                                                        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{session.latest_message.message}</p>
                                                     )}
-                                                </div>
+                                                </CardContent>
                                             </div>
-                                            {session.latest_message && (
-                                                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{session.latest_message.message}</p>
-                                            )}
-                                        </CardContent>
-                                    </Link>
+                                        ) : (
+                                            <Link href={`/chat/${session.id}`}>
+                                                <CardHeader className="pb-3">
+                                                    <div className="flex items-start justify-between">
+                                                        <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
+                                                        {session.is_shared && <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                                    </div>
+                                                    {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
+                                                </CardHeader>
+                                                <CardContent>
+                                                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock className="h-3 w-3" />
+                                                            {formatDate(session.last_activity_at)}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className={`text-xs ${
+                                                                    session.chat_type === 'global'
+                                                                        ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950'
+                                                                        : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950'
+                                                                }`}
+                                                            >
+                                                                {session.chat_type === 'global' ? 'Global' : 'Persona'}
+                                                            </Badge>
+                                                            {session.persona && (
+                                                                <Badge className={getRoleColor(session.persona)} variant="secondary">
+                                                                    {session.persona.toUpperCase()}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {session.latest_message && (
+                                                        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{session.latest_message.message}</p>
+                                                    )}
+                                                </CardContent>
+                                            </Link>
+                                        )}
+                                    </div>
                                 </Card>
                             ))}
                         </div>

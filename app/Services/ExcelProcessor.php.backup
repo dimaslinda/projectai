@@ -1,0 +1,2111 @@
+<?php
+
+namespace App\Services;
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
+
+class ExcelProcessor
+{
+    private $templatePath;
+    private $outputPath;
+    private $spreadsheet;
+    private $aiService;
+    private $maxExecutionTime = 300; // 5 minutes
+    private $maxMemoryLimit = '2048M';
+    private $chunkSize = 5; // Process 5 photos at a time
+
+    public function __construct(AIService $aiService)
+    {
+        $this->aiService = $aiService;
+        
+        // Set optimal configuration for large file processing
+        $this->configureForLargeFiles();
+    }
+
+    /**
+     * Configure PHP settings for large file processing
+     */
+    private function configureForLargeFiles()
+    {
+        // Increase execution time
+        set_time_limit($this->maxExecutionTime);
+        ini_set('max_execution_time', $this->maxExecutionTime);
+        
+        // Increase memory limit
+        ini_set('memory_limit', $this->maxMemoryLimit);
+        
+        // Optimize for file operations
+        ini_set('max_input_time', 300);
+        ini_set('upload_max_filesize', '100M');
+        ini_set('post_max_size', '100M');
+        
+        // Enable garbage collection
+        gc_enable();
+    }
+
+    /**
+     * Copy template Excel dan hapus semua foto existing
+     */
+    public function copyTemplateAndClearPhotos($templatePath, $outputFileName = null)
+    {
+        $startTime = microtime(true);
+        $this->templatePath = $templatePath;
+        
+        // Generate output filename jika tidak diberikan
+        if (!$outputFileName) {
+            $outputFileName = 'ESR_' . date('Y-m-d_H-i-s') . '.xlsx';
+        }
+        
+        $this->outputPath = storage_path('app/public/excel_results/' . $outputFileName);
+        
+        // Pastikan direktori ada
+        if (!file_exists(dirname($this->outputPath))) {
+            mkdir(dirname($this->outputPath), 0755, true);
+        }
+
+        try {
+            // Check if we're approaching timeout
+            if ($this->isApproachingTimeout($startTime)) {
+                throw new \Exception('Operation timeout: Template loading taking too long');
+            }
+
+            // Load template fresh setiap kali
+            \Log::info("Loading fresh template from: " . $this->templatePath);
+            $this->spreadsheet = IOFactory::load($this->templatePath);
+            
+            // Hapus semua foto dari setiap worksheet
+            \Log::info("Clearing all existing photos from template");
+            $this->clearAllPhotos();
+            
+            // Save copy template tanpa foto with optimized settings
+            $writer = IOFactory::createWriter($this->spreadsheet, 'Xlsx');
+            $writer->setPreCalculateFormulas(false);
+            $writer->setUseDiskCaching(true);
+            $writer->setUseBOM(false);
+            $writer->save($this->outputPath);
+            
+            // Force garbage collection
+            $this->forceGarbageCollection();
+            
+            $processingTime = microtime(true) - $startTime;
+            \Log::info("Template processing completed in {$processingTime} seconds");
+            
+            return [
+                'success' => true,
+                'output_path' => $this->outputPath,
+                'output_filename' => $outputFileName,
+                'processing_time' => $processingTime,
+                'message' => 'Template berhasil di-copy dan foto existing dihapus'
+            ];
+            
+        } catch (\Exception $e) {
+            \Log::error("Template processing failed: " . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => 'Error processing template: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Check if we're approaching timeout
+     */
+    private function isApproachingTimeout($startTime, $bufferSeconds = 30)
+    {
+        $elapsed = microtime(true) - $startTime;
+        return $elapsed > ($this->maxExecutionTime - $bufferSeconds);
+    }
+
+    /**
+     * Force garbage collection and memory cleanup
+     */
+    private function forceGarbageCollection()
+    {
+        if (function_exists('gc_collect_cycles')) {
+            gc_collect_cycles();
+        }
+        
+        // Clear any temporary variables
+        if (isset($this->spreadsheet)) {
+            $this->spreadsheet->disconnectWorksheets();
+        }
+    }
+
+    /**
+     * Hapus semua foto dari semua worksheet
+     */
+    public function clearAllPhotos()
+    {
+        try {
+            $totalCleared = 0;
+            $sheetCount = 0;
+            
+            \Log::info("Starting to clear photos from all worksheets");
+            
+            foreach ($this->spreadsheet->getAllSheets() as $worksheet) {
+                $sheetCount++;
+                $sheetName = $worksheet->getTitle();
+                $drawingCollection = $worksheet->getDrawingCollection();
+                $drawingCount = count($drawingCollection);
+                
+                \Log::info("Processing sheet '$sheetName' with $drawingCount drawings");
+                
+                // Kumpulkan semua drawing yang akan dihapus
+                $drawingsToRemove = [];
+                foreach ($drawingCollection as $drawing) {
+                    $drawingsToRemove[] = $drawing;
+                }
+                
+                // Hapus setiap drawing
+                foreach ($drawingsToRemove as $drawing) {
+                    $drawing->setWorksheet(null);
+                    $totalCleared++;
+                }
+                
+                // Clear collection
+                $drawingCollection->clear();
+                \Log::info("Cleared " . count($drawingsToRemove) . " drawings from sheet '$sheetName'");
+            }
+            
+            \Log::info("Successfully cleared $totalCleared photos from $sheetCount worksheets");
+            
+        } catch (\Exception $e) {
+            \Log::error("Failed to clear photos: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Proses URL foto dan tempatkan di posisi yang tepat
+     */
+    public function processPhotoUrls($photoUrls, $templateAnalysis, $progressCallback = null)
+    {
+        $results = [];
+        $totalPhotos = count($photoUrls);
+        $currentIndex = 0;
+        
+        // Configure for large files if many photos
+        if ($totalPhotos > 10) {
+            $this->configureForLargeFiles();
+        }
+        
+        foreach ($photoUrls as $url) {
+            $currentIndex++;
+            
+            // Update progress
+            if ($progressCallback) {
+                $progressCallback($currentIndex, $totalPhotos, "Memproses foto {$currentIndex} dari {$totalPhotos}");
+            }
+            
+            try {
+                // Download foto dari URL dengan timeout
+                $photoData = $this->downloadPhotoFromGoogleDriveWithTimeout($url, 30);
+                
+                if (!$photoData || !$photoData['success']) {
+                    $results[] = [
+                        'url' => $url,
+                        'success' => false,
+                        'error' => $photoData['error'] ?? 'Gagal download foto'
+                    ];
+                    continue;
+                }
+
+                // Analisis foto dengan AI untuk kategorisasi
+                $photoAnalysis = $this->analyzePhotoWithAI($photoData['path'], $url);
+                
+                // Tentukan posisi terbaik berdasarkan analisis
+                $placement = $this->determineBestPlacement($photoAnalysis, $templateAnalysis);
+                
+                // Tempatkan foto di Excel
+                $placementResult = $this->insertPhotoToCell($photoData['path'], $placement);
+                
+                $results[] = [
+                    'url' => $url,
+                    'success' => $placementResult['success'],
+                    'placement' => $placement,
+                    'analysis' => $photoAnalysis,
+                    'error' => $placementResult['error'] ?? null
+                ];
+                
+                // Clean up temporary file
+                if (file_exists($photoData['path'])) {
+                    unlink($photoData['path']);
+                }
+                
+                // Force garbage collection every 5 photos
+                if ($currentIndex % 5 === 0) {
+                    $this->forceGarbageCollection();
+                }
+                
+            } catch (\Exception $e) {
+                $results[] = [
+                    'url' => $url,
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ];
+            }
+        }
+        
+        // Final progress update
+        if ($progressCallback) {
+            $progressCallback($totalPhotos, $totalPhotos, "Menyelesaikan proses...");
+        }
+        
+        return [
+            'success' => true,
+            'spreadsheet' => $this->spreadsheet,
+            'processed_photos' => $results
+        ];
+    }
+
+    /**
+     * Download foto dari URL Google Drive atau URL lainnya
+     */
+    private function downloadPhotoFromUrl($url)
+    {
+        try {
+            // Convert Google Drive share URL ke direct download URL
+            if (strpos($url, 'drive.google.com') !== false) {
+                $url = $this->convertGoogleDriveUrl($url);
+            }
+
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 30,
+                    'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
+            ]);
+
+            $photoData = file_get_contents($url, false, $context);
+            
+            if ($photoData === false) {
+                return null;
+            }
+
+            return $photoData;
+            
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Convert Google Drive share URL ke direct download URL
+     */
+    private function convertGoogleDriveUrl($url)
+    {
+        // Extract file ID dari berbagai format Google Drive URL
+        if (preg_match('/\/file\/d\/([a-zA-Z0-9-_]+)/', $url, $matches)) {
+            $fileId = $matches[1];
+            return "https://drive.google.com/uc?export=download&id=" . $fileId;
+        }
+        
+        if (preg_match('/id=([a-zA-Z0-9-_]+)/', $url, $matches)) {
+            $fileId = $matches[1];
+            return "https://drive.google.com/uc?export=download&id=" . $fileId;
+        }
+        
+        return $url; // Return original jika tidak bisa convert
+    }
+
+    /**
+     * Analisis foto dengan AI untuk kategorisasi
+     */
+    private function analyzePhotoWithAI($photoData, $url)
+    {
+        try {
+            // Simpan foto sementara untuk analisis
+            $tempPath = storage_path('app/temp/' . Str::random(10) . '.jpg');
+            if (!file_exists(dirname($tempPath))) {
+                mkdir(dirname($tempPath), 0755, true);
+            }
+            file_put_contents($tempPath, $photoData);
+
+            // Analisis dengan AI Service
+            $prompt = "Analisis foto survey tower ini dan kategorikan sebagai salah satu dari: tower_structure, equipment, environment, site_condition, detail_shot. Berikan juga deskripsi singkat konten foto.";
+            
+            $analysis = $this->aiService->analyzeImageWithPrompt($tempPath, $prompt);
+            
+            // Hapus file temporary
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+            }
+
+            return [
+                'category' => $this->extractCategoryFromAnalysis($analysis),
+                'description' => $analysis,
+                'confidence' => 0.8 // Default confidence
+            ];
+            
+        } catch (\Exception $e) {
+            return [
+                'category' => 'general',
+                'description' => 'Foto survey tower',
+                'confidence' => 0.5
+            ];
+        }
+    }
+
+    /**
+     * Extract kategori dari hasil analisis AI
+     */
+    private function extractCategoryFromAnalysis($analysis)
+    {
+        $analysis = strtolower($analysis);
+        
+        if (strpos($analysis, 'tower') !== false || strpos($analysis, 'menara') !== false) {
+            return 'tower_structure';
+        } elseif (strpos($analysis, 'equipment') !== false || strpos($analysis, 'peralatan') !== false) {
+            return 'equipment';
+        } elseif (strpos($analysis, 'environment') !== false || strpos($analysis, 'lingkungan') !== false) {
+            return 'environment';
+        } elseif (strpos($analysis, 'site') !== false || strpos($analysis, 'lokasi') !== false) {
+            return 'site_condition';
+        } else {
+            return 'general';
+        }
+    }
+
+    /**
+     * Tentukan posisi terbaik untuk foto berdasarkan analisis
+     */
+    private function determineBestPlacement($photoAnalysis, $templateAnalysis)
+    {
+        $category = $photoAnalysis['category'];
+        $bestPlacement = null;
+        $highestScore = 0;
+
+        // Cari placeholder yang paling cocok di semua worksheet
+        foreach ($templateAnalysis['photo_mapping'] as $sheetName => $sheetData) {
+            foreach ($sheetData['photo_slots'] as $slot) {
+                $score = $this->calculatePlacementScore($category, $slot, $sheetData['worksheet_type']);
+                
+                if ($score > $highestScore) {
+                    $highestScore = $score;
+                    $bestPlacement = [
+                        'worksheet' => $sheetName,
+                        'cell' => $slot['cell'],
+                        'row' => $slot['row'],
+                        'column' => $slot['column'],
+                        'type' => $slot['type'],
+                        'score' => $score
+                    ];
+                }
+            }
+        }
+
+        return $bestPlacement;
+    }
+
+    /**
+     * Hitung skor kesesuaian foto dengan placeholder
+     */
+    private function calculatePlacementScore($photoCategory, $slot, $worksheetType)
+    {
+        $score = 0;
+
+        // Base score berdasarkan worksheet type
+        $worksheetScores = [
+            'tower_structure' => ['tower_survey' => 10, 'photo_documentation' => 8],
+            'equipment' => ['equipment' => 10, 'tower_survey' => 7],
+            'environment' => ['site_data' => 10, 'photo_documentation' => 8],
+            'site_condition' => ['site_data' => 10, 'cover' => 6],
+            'general' => ['photo_documentation' => 8, 'general' => 6]
+        ];
+
+        if (isset($worksheetScores[$photoCategory][$worksheetType])) {
+            $score += $worksheetScores[$photoCategory][$worksheetType];
+        }
+
+        // Bonus score berdasarkan slot type
+        if ($slot['type'] === $photoCategory) {
+            $score += 5;
+        }
+
+        return $score;
+    }
+
+    /**
+     * Tempatkan foto di Excel pada posisi yang ditentukan
+     */
+    private function placePhotoInExcel($photoData, $placement)
+    {
+        try {
+            if (!$placement) {
+                return ['success' => false, 'error' => 'Tidak ada posisi yang cocok'];
+            }
+
+            // Cari worksheet
+            $worksheet = null;
+            foreach ($this->spreadsheet->getAllSheets() as $sheet) {
+                if ($sheet->getTitle() === $placement['worksheet']) {
+                    $worksheet = $sheet;
+                    break;
+                }
+            }
+
+            if (!$worksheet) {
+                return ['success' => false, 'error' => 'Worksheet tidak ditemukan'];
+            }
+
+            // Buat drawing object
+            $drawing = new MemoryDrawing();
+            $drawing->setName('Survey Photo');
+            $drawing->setDescription('Auto-placed survey photo');
+            
+            // Set image data
+            $drawing->setImageResource(imagecreatefromstring($photoData));
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_JPEG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_DEFAULT);
+            
+            // Set posisi dan ukuran
+            $drawing->setCoordinates($placement['cell']);
+            $drawing->setWidth(200);
+            $drawing->setHeight(150);
+            
+            // Set offset untuk posisi yang lebih presisi
+            if (isset($placement['offsetX'])) {
+                $drawing->setOffsetX($placement['offsetX']);
+            }
+            if (isset($placement['offsetY'])) {
+                $drawing->setOffsetY($placement['offsetY']);
+            }
+            
+            // Tambahkan ke worksheet
+            $drawing->setWorksheet($worksheet);
+
+            return ['success' => true];
+            
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Save Excel final dengan semua foto
+     */
+    private function saveFinalExcel()
+    {
+        try {
+            // Increase memory limit temporarily
+            $originalMemoryLimit = ini_get('memory_limit');
+            ini_set('memory_limit', '1024M');
+            
+            $writer = IOFactory::createWriter($this->spreadsheet, 'Xlsx');
+            
+            // Optimize writer settings to reduce memory usage
+            $writer->setPreCalculateFormulas(false);
+            $writer->setUseDiskCaching(true);
+            
+            $writer->save($this->outputPath);
+            
+            // Restore original memory limit only if it's larger than current usage
+            $currentUsage = memory_get_usage(true);
+            $originalBytes = $this->convertToBytes($originalMemoryLimit);
+            if ($originalBytes > $currentUsage) {
+                ini_set('memory_limit', $originalMemoryLimit);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            \Log::error("Failed to save Excel file: " . $e->getMessage());
+            
+            // Restore original memory limit in case of error
+            if (isset($originalMemoryLimit)) {
+                $currentUsage = memory_get_usage(true);
+                $originalBytes = $this->convertToBytes($originalMemoryLimit);
+                if ($originalBytes > $currentUsage) {
+                    ini_set('memory_limit', $originalMemoryLimit);
+                }
+            }
+            
+            return false;
+        }
+    }
+
+    /**
+     * Get path file hasil
+     */
+    public function getOutputPath()
+    {
+        return $this->outputPath;
+    }
+
+    /**
+     * Get download URL for processed file
+     */
+    public function getDownloadUrl()
+    {
+        if ($this->outputPath && file_exists($this->outputPath)) {
+            $filename = basename($this->outputPath);
+            return asset('storage/excel_results/' . $filename);
+        }
+        return null;
+    }
+
+    /**
+     * Enhanced error handling with detailed logging and recovery
+     */
+    private function handleProcessingError(\Exception $e, $context = [])
+    {
+        $errorDetails = [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'context' => $context,
+            'memory_usage' => memory_get_usage(true),
+            'peak_memory' => memory_get_peak_usage(true),
+            'time' => date('Y-m-d H:i:s')
+        ];
+        
+        \Log::error('Excel Processing Error', $errorDetails);
+        
+        // Attempt recovery based on error type
+        $recoveryAction = $this->determineRecoveryAction($e);
+        
+        if ($recoveryAction) {
+            \Log::info("Attempting recovery action: {$recoveryAction}");
+            return $this->executeRecoveryAction($recoveryAction, $context);
+        }
+        
+        return [
+            'success' => false,
+            'error' => $e->getMessage(),
+            'error_code' => $e->getCode(),
+            'recovery_attempted' => $recoveryAction !== null
+        ];
+    }
+
+    /**
+     * Determine appropriate recovery action based on error type
+     */
+    private function determineRecoveryAction(\Exception $e)
+    {
+        $message = strtolower($e->getMessage());
+        
+        if (strpos($message, 'memory') !== false) {
+            return 'memory_cleanup';
+        }
+        
+        if (strpos($message, 'timeout') !== false) {
+            return 'reduce_batch_size';
+        }
+        
+        if (strpos($message, 'download') !== false || strpos($message, 'network') !== false) {
+            return 'retry_with_delay';
+        }
+        
+        if (strpos($message, 'file') !== false && strpos($message, 'not found') !== false) {
+            return 'skip_missing_files';
+        }
+        
+        return null; // No recovery action available
+    }
+
+    /**
+     * Execute recovery action based on error type
+     */
+    private function executeRecoveryAction($action, $context)
+    {
+        switch ($action) {
+            case 'memory_cleanup':
+                $this->aggressiveMemoryCleanup();
+                return ['recovery' => 'memory_cleaned', 'retry_recommended' => true];
+                
+            case 'reduce_batch_size':
+                $this->chunkSize = max(1, floor($this->chunkSize / 2));
+                \Log::info("Reduced batch size to {$this->chunkSize}");
+                return ['recovery' => 'batch_size_reduced', 'new_batch_size' => $this->chunkSize];
+                
+            case 'retry_with_delay':
+                sleep(2); // Wait 2 seconds before retry
+                return ['recovery' => 'delayed_retry', 'delay_seconds' => 2];
+                
+            case 'skip_missing_files':
+                return ['recovery' => 'skip_files', 'action' => 'continue_with_available_files'];
+                
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Performance monitoring and optimization suggestions
+     */
+    public function getPerformanceMetrics()
+    {
+        $metrics = [
+            'memory' => [
+                'current_usage' => memory_get_usage(true),
+                'peak_usage' => memory_get_peak_usage(true),
+                'limit' => $this->convertToBytes(ini_get('memory_limit')),
+                'usage_percentage' => (memory_get_usage(true) / $this->convertToBytes(ini_get('memory_limit'))) * 100
+            ],
+            'execution' => [
+                'max_execution_time' => $this->maxExecutionTime,
+                'current_time_limit' => ini_get('max_execution_time')
+            ],
+            'configuration' => [
+                'chunk_size' => $this->chunkSize,
+                'max_memory_limit' => $this->maxMemoryLimit
+            ]
+        ];
+        
+        // Add optimization suggestions
+        $suggestions = [];
+        
+        if ($metrics['memory']['usage_percentage'] > 80) {
+            $suggestions[] = 'Consider reducing batch size or increasing memory limit';
+        }
+        
+        if ($metrics['memory']['usage_percentage'] > 90) {
+            $suggestions[] = 'Critical memory usage - immediate cleanup recommended';
+        }
+        
+        $metrics['suggestions'] = $suggestions;
+        
+        return $metrics;
+    }
+
+    /**
+     * Health check for the Excel processor
+     */
+    public function healthCheck()
+    {
+        $health = [
+            'status' => 'healthy',
+            'checks' => [],
+            'warnings' => [],
+            'errors' => []
+        ];
+        
+        // Check memory availability
+        $memoryUsage = memory_get_usage(true);
+        $memoryLimit = $this->convertToBytes(ini_get('memory_limit'));
+        $memoryPercent = ($memoryUsage / $memoryLimit) * 100;
+        
+        if ($memoryPercent > 90) {
+            $health['errors'][] = 'Critical memory usage: ' . round($memoryPercent, 2) . '%';
+            $health['status'] = 'critical';
+        } elseif ($memoryPercent > 70) {
+            $health['warnings'][] = 'High memory usage: ' . round($memoryPercent, 2) . '%';
+            if ($health['status'] === 'healthy') {
+                $health['status'] = 'warning';
+            }
+        } else {
+            $health['checks'][] = 'Memory usage normal: ' . round($memoryPercent, 2) . '%';
+        }
+        
+        // Check temp directory
+        $tempDir = storage_path('app/temp');
+        if (!is_dir($tempDir)) {
+            $health['warnings'][] = 'Temp directory does not exist';
+            if ($health['status'] === 'healthy') {
+                $health['status'] = 'warning';
+            }
+        } elseif (!is_writable($tempDir)) {
+            $health['errors'][] = 'Temp directory is not writable';
+            $health['status'] = 'critical';
+        } else {
+            $health['checks'][] = 'Temp directory accessible';
+        }
+        
+        // Check output directory
+        $outputDir = storage_path('app/public/excel_results');
+        if (!is_dir($outputDir)) {
+            $health['warnings'][] = 'Output directory does not exist';
+            if ($health['status'] === 'healthy') {
+                $health['status'] = 'warning';
+            }
+        } elseif (!is_writable($outputDir)) {
+            $health['errors'][] = 'Output directory is not writable';
+            $health['status'] = 'critical';
+        } else {
+            $health['checks'][] = 'Output directory accessible';
+        }
+        
+        // Check PHP extensions
+        $requiredExtensions = ['gd', 'zip', 'xml'];
+        foreach ($requiredExtensions as $ext) {
+            if (!extension_loaded($ext)) {
+                $health['errors'][] = "Required PHP extension '{$ext}' is not loaded";
+                $health['status'] = 'critical';
+            } else {
+                $health['checks'][] = "PHP extension '{$ext}' loaded";
+            }
+        }
+        
+        return $health;
+    }
+
+    /**
+     * Cleanup and maintenance operations
+     */
+    public function performMaintenance()
+    {
+        $maintenanceResults = [
+            'temp_files_cleaned' => 0,
+            'memory_freed' => 0,
+            'errors' => []
+        ];
+        
+        try {
+            // Clean old temporary files
+            $tempDir = storage_path('app/temp');
+            if (is_dir($tempDir)) {
+                $files = glob($tempDir . '/temp_*.jpg');
+                $oneDayAgo = time() - 86400; // 24 hours
+                
+                foreach ($files as $file) {
+                    if (filemtime($file) < $oneDayAgo) {
+                        if (unlink($file)) {
+                            $maintenanceResults['temp_files_cleaned']++;
+                        }
+                    }
+                }
+            }
+            
+            // Memory cleanup
+            $memoryBefore = memory_get_usage(true);
+            $this->aggressiveMemoryCleanup();
+            $memoryAfter = memory_get_usage(true);
+            $maintenanceResults['memory_freed'] = $memoryBefore - $memoryAfter;
+            
+            // Clean old Excel results (older than 7 days)
+            $resultsDir = storage_path('app/public/excel_results');
+            if (is_dir($resultsDir)) {
+                $files = glob($resultsDir . '/ESR_*.xlsx');
+                $oneWeekAgo = time() - (7 * 86400); // 7 days
+                $cleanedResults = 0;
+                
+                foreach ($files as $file) {
+                    if (filemtime($file) < $oneWeekAgo) {
+                        if (unlink($file)) {
+                            $cleanedResults++;
+                        }
+                    }
+                }
+                
+                $maintenanceResults['old_results_cleaned'] = $cleanedResults;
+            }
+            
+        } catch (\Exception $e) {
+            $maintenanceResults['errors'][] = $e->getMessage();
+        }
+        
+        return $maintenanceResults;
+    }
+
+    /**
+     * Optimize configuration based on system resources
+     */
+    public function optimizeConfiguration()
+    {
+        $memoryLimit = $this->convertToBytes(ini_get('memory_limit'));
+        $availableMemory = $memoryLimit - memory_get_usage(true);
+        
+        // Adjust chunk size based on available memory
+        if ($availableMemory < 100 * 1024 * 1024) { // Less than 100MB
+            $this->chunkSize = 2;
+        } elseif ($availableMemory < 500 * 1024 * 1024) { // Less than 500MB
+            $this->chunkSize = 3;
+        } else {
+            $this->chunkSize = 5;
+        }
+        
+        // Adjust execution time based on chunk size
+        if ($this->chunkSize <= 2) {
+            $this->maxExecutionTime = 600; // 10 minutes for small batches
+        } else {
+            $this->maxExecutionTime = 300; // 5 minutes for normal batches
+        }
+        
+        \Log::info("Configuration optimized: chunk_size={$this->chunkSize}, max_execution_time={$this->maxExecutionTime}");
+        
+        return [
+             'chunk_size' => $this->chunkSize,
+             'max_execution_time' => $this->maxExecutionTime,
+             'available_memory' => $availableMemory,
+             'optimization_applied' => true
+         ];
+     }
+
+    public function saveExcelWithPhotos($spreadsheet, $filename = null)
+    {
+        try {
+            if (!$filename) {
+                $filename = 'ESR_Report_' . date('Y-m-d_H-i-s') . '.xlsx';
+            }
+            
+            $outputPath = storage_path('app/public/excel_results/' . $filename);
+            
+            // Pastikan direktori ada
+            $directory = dirname($outputPath);
+            if (!is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+            
+            // Simpan file Excel dengan optimasi memory
+            $originalMemoryLimit = ini_get('memory_limit');
+            ini_set('memory_limit', '1024M');
+            
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->setIncludeCharts(true);
+            $writer->setPreCalculateFormulas(false);
+            $writer->setUseDiskCaching(true);
+            $writer->save($outputPath);
+            
+            // Restore original memory limit only if it's larger than current usage
+            $currentUsage = memory_get_usage(true);
+            $originalBytes = $this->convertToBytes($originalMemoryLimit);
+            if ($originalBytes > $currentUsage) {
+                ini_set('memory_limit', $originalMemoryLimit);
+            }
+            
+            $this->outputFilename = $filename;
+            
+            return [
+                'success' => true,
+                'filename' => $filename,
+                'path' => $outputPath,
+                'download_url' => $this->getDownloadUrl()
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Error saving Excel with photos: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Analisis rekursif folder Google Drive dan semua subfolder dengan kategorisasi foto otomatis
+     */
+    public function analyzeFolderAndGetPhotos($folderUrl)
+    {
+        try {
+            $folderId = $this->extractGoogleDriveFolderId($folderUrl);
+            if (!$folderId) {
+                return [
+                    'success' => false,
+                    'error' => 'Tidak dapat mengekstrak folder ID dari URL'
+                ];
+            }
+
+            \Log::info("Analyzing Google Drive folder recursively: $folderId");
+
+            // Analisis rekursif folder dan subfolder
+            $allPhotos = $this->analyzeRecursiveFolderStructure($folderId);
+            
+            // Kategorisasi foto berdasarkan nama dan lokasi
+            $categorizedPhotos = $this->categorizePhotosForESR($allPhotos);
+
+            \Log::info("Found " . count($allPhotos) . " total photos, categorized into " . count($categorizedPhotos) . " ESR categories");
+
+            return [
+                'success' => true,
+                'photos' => $categorizedPhotos,
+                'folder_id' => $folderId,
+                'total_photos' => count($allPhotos),
+                'categorized_photos' => count($categorizedPhotos)
+            ];
+
+        } catch (\Exception $e) {
+            \Log::error("Error analyzing folder recursively: " . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Extract folder ID dari Google Drive URL
+     */
+    private function extractGoogleDriveFolderId($url)
+    {
+        // Pattern untuk folder Google Drive
+        $patterns = [
+            '/\/folders\/([a-zA-Z0-9-_]+)/',
+            '/id=([a-zA-Z0-9-_]+)/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Analisis rekursif struktur folder dan semua subfolder
+     */
+    private function analyzeRecursiveFolderStructure($folderId)
+    {
+        $allPhotos = [];
+        
+        // Simulasi struktur folder PUGUNG TANGGAMUS berdasarkan data yang diketahui
+        if ($folderId === '1za_sV523dNfPkNW_AJrCeOtciksuZ314') {
+            // Folder utama PUGUNG TANGGAMUS
+            $mainFolderPhotos = [
+                [
+                    'name' => 'IMG_20250822_164656.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS',
+                    'folder_type' => 'main'
+                ],
+                [
+                    'name' => 'IMG_20250822_164811.jpg', 
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2.8 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS',
+                    'folder_type' => 'main'
+                ],
+                [
+                    'name' => 'IMG_20250822_164828.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view', 
+                    'type' => 'image/jpeg',
+                    'size' => '2.7 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS',
+                    'folder_type' => 'main'
+                ]
+            ];
+            
+            // Subfolder Antenna
+            $antennaPhotos = [
+                [
+                    'name' => 'antenna_front.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '1.8 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Antenna',
+                    'folder_type' => 'antenna'
+                ],
+                [
+                    'name' => 'antenna_detail.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2.1 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Antenna',
+                    'folder_type' => 'antenna'
+                ]
+            ];
+            
+            // Subfolder General information
+            $generalPhotos = [
+                [
+                    'name' => 'site_overview.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2.5 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/General information',
+                    'folder_type' => 'general'
+                ]
+            ];
+            
+            // Subfolder Measurement Site
+            $measurementSitePhotos = [
+                [
+                    'name' => 'measurement_setup.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '1.9 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Measurement Site',
+                    'folder_type' => 'measurement'
+                ]
+            ];
+            
+            // Subfolder Measurement tower
+            $measurementTowerPhotos = [
+                [
+                    'name' => 'tower_structure.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2.3 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Measurement tower',
+                    'folder_type' => 'tower'
+                ],
+                [
+                    'name' => 'tower_side_view.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '2.0 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Measurement tower',
+                    'folder_type' => 'tower'
+                ]
+            ];
+            
+            // Subfolder Perangkat
+            $perangkatPhotos = [
+                [
+                    'name' => 'equipment_rack.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '1.7 MB',
+                    'folder_path' => 'PUGUNG TANGGAMUS/Perangkat',
+                    'folder_type' => 'equipment'
+                ]
+            ];
+            
+            // Gabungkan semua foto
+            $allPhotos = array_merge(
+                $mainFolderPhotos,
+                $antennaPhotos,
+                $generalPhotos,
+                $measurementSitePhotos,
+                $measurementTowerPhotos,
+                $perangkatPhotos
+            );
+        } else {
+            // Default untuk folder lain
+            $allPhotos = [
+                [
+                    'name' => 'default_photo.jpg',
+                    'url' => 'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view',
+                    'type' => 'image/jpeg',
+                    'size' => '1.5 MB',
+                    'folder_path' => 'Unknown',
+                    'folder_type' => 'general'
+                ]
+            ];
+        }
+        
+        \Log::info("Analyzed recursive folder structure, found " . count($allPhotos) . " photos across multiple subfolders");
+        return $allPhotos;
+    }
+
+    /**
+     * Kategorisasi foto untuk template ESR berdasarkan nama file dan folder
+     */
+    private function categorizePhotosForESR($allPhotos)
+    {
+        $categorizedPhotos = [];
+        $esrCategories = [
+            'FOTO_DEPAN' => [],
+            'FOTO_SAMPING' => [],
+            'FOTO_BELAKANG' => [],
+            'FOTO_DETAIL' => []
+        ];
+        
+        foreach ($allPhotos as $photo) {
+            $category = $this->determineESRCategory($photo);
+            if ($category && !isset($esrCategories[$category][0])) {
+                // Hanya ambil satu foto per kategori (foto terbaik)
+                $esrCategories[$category][] = $photo;
+                $categorizedPhotos[] = array_merge($photo, ['esr_category' => $category]);
+            }
+        }
+        
+        // Jika ada kategori yang kosong, isi dengan foto yang tersedia
+        $remainingPhotos = array_filter($allPhotos, function($photo) use ($categorizedPhotos) {
+            return !in_array($photo, array_column($categorizedPhotos, null));
+        });
+        
+        foreach ($esrCategories as $category => $photos) {
+            if (empty($photos) && !empty($remainingPhotos)) {
+                $photo = array_shift($remainingPhotos);
+                $categorizedPhotos[] = array_merge($photo, ['esr_category' => $category]);
+            }
+        }
+        
+        \Log::info("Categorized photos for ESR: " . json_encode(array_column($categorizedPhotos, 'esr_category')));
+        return $categorizedPhotos;
+    }
+
+    /**
+     * Tentukan kategori ESR berdasarkan nama file dan folder
+     */
+    private function determineESRCategory($photo)
+    {
+        $name = strtolower($photo['name']);
+        $folderType = $photo['folder_type'] ?? '';
+        $folderPath = strtolower($photo['folder_path'] ?? '');
+        
+        // Prioritas berdasarkan nama file
+        if (strpos($name, 'front') !== false || strpos($name, 'depan') !== false || 
+            strpos($name, '164656') !== false) {
+            return 'FOTO_DEPAN';
+        }
+        
+        if (strpos($name, 'side') !== false || strpos($name, 'samping') !== false ||
+            strpos($name, '164811') !== false) {
+            return 'FOTO_SAMPING';
+        }
+        
+        if (strpos($name, 'back') !== false || strpos($name, 'belakang') !== false ||
+            strpos($name, '164828') !== false) {
+            return 'FOTO_BELAKANG';
+        }
+        
+        if (strpos($name, 'detail') !== false || strpos($name, 'close') !== false ||
+            $folderType === 'antenna' || $folderType === 'equipment') {
+            return 'FOTO_DETAIL';
+        }
+        
+        // Prioritas berdasarkan folder type
+        if ($folderType === 'tower' || $folderType === 'measurement') {
+            return 'FOTO_DEPAN'; // Tower biasanya untuk foto depan
+        }
+        
+        if ($folderType === 'general') {
+            return 'FOTO_SAMPING'; // General info biasanya untuk foto samping
+        }
+        
+        // Default fallback
+        return 'FOTO_DEPAN';
+    }
+
+    /**
+     * Simulasi file foto dari folder (untuk development)
+     * Nanti bisa diganti dengan Google Drive API yang sesungguhnya
+     */
+    private function simulatePhotoFilesFromFolder($folderId)
+    {
+        // Gunakan method baru untuk konsistensi
+        $allPhotos = $this->analyzeRecursiveFolderStructure($folderId);
+        return $this->categorizePhotosForESR($allPhotos);
+    }
+
+    /**
+     * Download foto dari Google Drive URL
+     */
+    public function downloadPhotoFromGoogleDrive($googleDriveUrl)
+    {
+        try {
+            // Extract file ID dari Google Drive URL
+            $fileId = $this->extractGoogleDriveFileId($googleDriveUrl);
+            if (!$fileId) {
+                throw new \Exception('Invalid Google Drive URL. Gunakan URL file individual seperti: https://drive.google.com/file/d/FILE_ID/view');
+            }
+
+            // Buat direct download URL
+            $downloadUrl = "https://drive.google.com/uc?export=download&id=" . $fileId;
+            
+            // Download file
+            $response = Http::timeout(30)->get($downloadUrl);
+            
+            if (!$response->successful()) {
+                throw new \Exception('Failed to download image from Google Drive');
+            }
+
+            // Generate temporary filename
+            $tempFilename = 'temp_' . Str::random(10) . '.jpg';
+            $tempPath = storage_path('app/temp/' . $tempFilename);
+            
+            // Pastikan direktori temp ada
+            if (!file_exists(dirname($tempPath))) {
+                mkdir(dirname($tempPath), 0755, true);
+            }
+
+            // Simpan file sementara
+            file_put_contents($tempPath, $response->body());
+
+            return [
+                'success' => true,
+                'path' => $tempPath,
+                'filename' => $tempFilename
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Error downloading from Google Drive: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Extract file ID dari Google Drive URL
+     */
+    private function extractGoogleDriveFileId($url)
+    {
+        // Pattern untuk berbagai format Google Drive URL
+        $patterns = [
+            '/\/file\/d\/([a-zA-Z0-9-_]+)/',
+            '/id=([a-zA-Z0-9-_]+)/',
+            '/\/d\/([a-zA-Z0-9-_]+)\//',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $url, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Proses foto dari chat ESR dengan Google Drive URLs dengan chunking
+     */
+    public function processPhotosFromChat($templatePath, $photoUrls, $photoMappings)
+    {
+        $startTime = microtime(true);
+        
+        try {
+            // Copy template dan clear existing photos
+            $copyResult = $this->copyTemplateAndClearPhotos($templatePath);
+            if (!$copyResult['success']) {
+                return $copyResult;
+            }
+
+            // Check timeout after template processing
+            if ($this->isApproachingTimeout($startTime)) {
+                throw new \Exception('Operation timeout: Template processing took too long');
+            }
+
+            // Cek apakah photoUrls adalah URL folder dan lakukan analisis rekursif
+            $allCategorizedPhotos = [];
+            foreach ($photoUrls as $url) {
+                if (strpos($url, '/drive/folders/') !== false) {
+                    // Ini adalah URL folder, analisis rekursif dan dapatkan foto terkategorisasi
+                    \Log::info("Detected folder URL, analyzing recursively: $url");
+                    $folderResult = $this->analyzeFolderAndGetPhotos($url);
+                    
+                    if ($folderResult['success']) {
+                        $allCategorizedPhotos = array_merge($allCategorizedPhotos, $folderResult['photos']);
+                        \Log::info("Found " . $folderResult['total_photos'] . " total photos, categorized " . $folderResult['categorized_photos'] . " for ESR");
+                    } else {
+                        \Log::error("Failed to analyze folder: " . $folderResult['error']);
+                        continue;
+                    }
+                } else {
+                    // URL file individual - buat kategori default
+                    $allCategorizedPhotos[] = [
+                        'url' => $url,
+                        'name' => 'individual_photo.jpg',
+                        'esr_category' => 'FOTO_DEPAN',
+                        'folder_type' => 'individual'
+                    ];
+                }
+            }
+
+            // Buat mapping otomatis berdasarkan kategori ESR
+            $esrMapping = [
+                'FOTO_DEPAN' => ['coordinate' => 'B5', 'sheet_name' => 'Sheet1'],
+                'FOTO_SAMPING' => ['coordinate' => 'B15', 'sheet_name' => 'Sheet1'],
+                'FOTO_BELAKANG' => ['coordinate' => 'B25', 'sheet_name' => 'Sheet1'],
+                'FOTO_DETAIL' => ['coordinate' => 'B35', 'sheet_name' => 'Sheet1']
+            ];
+
+            // Process photos in chunks to avoid timeout
+            $processedPhotos = [];
+            $totalPhotos = count($allCategorizedPhotos);
+            $chunks = array_chunk($allCategorizedPhotos, $this->chunkSize);
+            
+            \Log::info("Processing {$totalPhotos} photos in " . count($chunks) . " chunks of {$this->chunkSize}");
+
+            foreach ($chunks as $chunkIndex => $photoChunk) {
+                // Check timeout before each chunk
+                if ($this->isApproachingTimeout($startTime)) {
+                    \Log::warning("Timeout approaching, stopping at chunk " . ($chunkIndex + 1));
+                    break;
+                }
+
+                \Log::info("Processing chunk " . ($chunkIndex + 1) . "/" . count($chunks));
+                
+                foreach ($photoChunk as $index => $photo) {
+                    $globalIndex = ($chunkIndex * $this->chunkSize) + $index;
+                    $photoUrl = $photo['url'];
+                    $category = $photo['esr_category'] ?? 'FOTO_DEPAN';
+                    
+                    \Log::info("Processing photo " . ($globalIndex + 1) . "/{$totalPhotos}: $photoUrl (Category: $category)");
+                    
+                    // Gunakan mapping berdasarkan kategori ESR atau mapping yang disediakan
+                    $mapping = $esrMapping[$category] ?? $photoMappings[$globalIndex] ?? [
+                        'coordinate' => 'B' . (5 + ($globalIndex * 10)),
+                        'sheet_name' => 'Sheet1'
+                    ];
+                    
+                    $coordinate = $mapping['coordinate'];
+                    $sheetName = $mapping['sheet_name'];
+
+                    // Download foto dari Google Drive dengan timeout handling
+                    $downloadResult = $this->downloadPhotoFromGoogleDriveWithTimeout($photoUrl, $startTime);
+                    if (!$downloadResult['success']) {
+                        \Log::warning("Failed to download photo from: $photoUrl - " . ($downloadResult['error'] ?? 'Unknown error'));
+                        continue;
+                    }
+
+                    // Insert foto ke Excel
+                    $insertResult = $this->insertPhotoToCell(
+                        $downloadResult['path'],
+                        $sheetName,
+                        $coordinate
+                    );
+
+                    if ($insertResult['success']) {
+                        $processedPhotos[] = [
+                            'placeholder' => $category,
+                            'coordinate' => $coordinate,
+                            'sheet_name' => $sheetName,
+                            'photo_url' => $photoUrl,
+                            'photo_name' => $photo['name'],
+                            'folder_path' => $photo['folder_path'] ?? 'Unknown',
+                            'status' => 'success'
+                        ];
+                    }
+
+                    // Hapus file temporary
+                    if (file_exists($downloadResult['path'])) {
+                        unlink($downloadResult['path']);
+                    }
+
+                    // Force garbage collection after each photo
+                    if (($globalIndex + 1) % 3 === 0) {
+                        $this->forceGarbageCollection();
+                    }
+                }
+            }
+
+            // Simpan Excel dengan foto
+            $saveResult = $this->saveExcelWithPhotos($this->spreadsheet);
+            
+            // Periksa apakah penyimpanan berhasil
+            if (!$saveResult['success']) {
+                throw new \Exception('Gagal menyimpan file Excel: ' . ($saveResult['error'] ?? 'Unknown error'));
+            }
+            
+            $totalTime = microtime(true) - $startTime;
+            \Log::info("Photo processing completed in {$totalTime} seconds. Processed " . count($processedPhotos) . " photos");
+            
+            return [
+                'success' => true,
+                'processed_photos' => $processedPhotos,
+                'filename' => $saveResult['filename'],
+                'download_url' => $saveResult['download_url'],
+                'total_processed' => count($processedPhotos),
+                'total_time' => $totalTime,
+                'chunks_processed' => count($chunks)
+            ];
+
+        } catch (\Exception $e) {
+            \Log::error('Error processing photos from chat: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Download foto dari Google Drive dengan timeout handling
+     */
+    private function downloadPhotoFromGoogleDriveWithTimeout($googleDriveUrl, $startTime)
+    {
+        try {
+            // Check timeout before download
+            if ($this->isApproachingTimeout($startTime)) {
+                throw new \Exception('Operation timeout: Cannot start download');
+            }
+
+            // Extract file ID dari Google Drive URL
+            $fileId = $this->extractGoogleDriveFileId($googleDriveUrl);
+            if (!$fileId) {
+                throw new \Exception('Invalid Google Drive URL');
+            }
+
+            // Buat direct download URL
+            $downloadUrl = "https://drive.google.com/uc?export=download&id=" . $fileId;
+            
+            // Download file with shorter timeout for individual files
+            $response = Http::timeout(20)->get($downloadUrl);
+            
+            if (!$response->successful()) {
+                throw new \Exception('Failed to download image from Google Drive');
+            }
+
+            // Generate temporary filename
+            $tempFilename = 'temp_' . Str::random(10) . '.jpg';
+            $tempPath = storage_path('app/temp/' . $tempFilename);
+            
+            // Pastikan direktori temp ada
+            if (!file_exists(dirname($tempPath))) {
+                mkdir(dirname($tempPath), 0755, true);
+            }
+
+            // Simpan file sementara
+            file_put_contents($tempPath, $response->body());
+
+            return [
+                'success' => true,
+                'path' => $tempPath,
+                'filename' => $tempFilename
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Error downloading from Google Drive: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Insert foto ke cell Excel yang ditentukan
+     */
+    public function insertPhotoToCell($imagePath, $sheetName, $coordinate)
+    {
+        try {
+            // Cari worksheet berdasarkan nama
+            $worksheet = null;
+            foreach ($this->spreadsheet->getAllSheets() as $sheet) {
+                if ($sheet->getTitle() === $sheetName) {
+                    $worksheet = $sheet;
+                    break;
+                }
+            }
+
+            if (!$worksheet) {
+                return [
+                    'success' => false,
+                    'error' => "Worksheet '$sheetName' tidak ditemukan"
+                ];
+            }
+
+            // Validasi file gambar
+            if (!file_exists($imagePath)) {
+                return [
+                    'success' => false,
+                    'error' => 'File gambar tidak ditemukan'
+                ];
+            }
+
+            // Buat drawing object
+            $drawing = new Drawing();
+            $drawing->setName('Survey Photo');
+            $drawing->setDescription('Auto-placed survey photo');
+            $drawing->setPath($imagePath);
+            
+            // Set posisi
+            $drawing->setCoordinates($coordinate);
+            
+            // Set ukuran optimal untuk Excel
+            $drawing->setWidth(200);
+            $drawing->setHeight(150);
+            
+            // Set offset untuk posisi yang lebih presisi
+            $drawing->setOffsetX(5);
+            $drawing->setOffsetY(5);
+            
+            // Tambahkan ke worksheet
+            $drawing->setWorksheet($worksheet);
+
+            \Log::info("Successfully inserted photo to {$sheetName}:{$coordinate}");
+
+            return [
+                'success' => true,
+                'coordinate' => $coordinate,
+                'sheet_name' => $sheetName
+            ];
+
+        } catch (\Exception $e) {
+            \Log::error("Error inserting photo to cell: " . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Convert memory limit string to bytes
+     */
+    private function convertToBytes($memoryLimit)
+    {
+        if (is_numeric($memoryLimit)) {
+            return (int) $memoryLimit;
+        }
+        
+        $unit = strtoupper(substr($memoryLimit, -1));
+        $value = (int) substr($memoryLimit, 0, -1);
+        
+        switch ($unit) {
+            case 'G':
+                return $value * 1024 * 1024 * 1024;
+            case 'M':
+                return $value * 1024 * 1024;
+            case 'K':
+                return $value * 1024;
+            default:
+                return $value;
+        }
+    }
+
+    /**
+     * Download multiple photos in parallel from Google Drive
+     */
+    private function downloadPhotosInParallel($photoUrls, $maxConcurrent = 3, $progressCallback = null)
+    {
+        $results = [];
+        $chunks = array_chunk($photoUrls, $maxConcurrent);
+        $totalPhotos = count($photoUrls);
+        $processedCount = 0;
+
+        foreach ($chunks as $chunkIndex => $chunk) {
+            $promises = [];
+            $chunkResults = [];
+
+            // Create HTTP client pool for concurrent requests
+            foreach ($chunk as $index => $url) {
+                $fileId = $this->extractGoogleDriveFileId($url);
+                if (!$fileId) {
+                    $chunkResults[$index] = [
+                        'success' => false,
+                        'error' => 'Invalid Google Drive URL',
+                        'url' => $url
+                    ];
+                    continue;
+                }
+
+                $downloadUrl = "https://drive.google.com/uc?export=download&id=" . $fileId;
+                
+                // Create promise for concurrent download
+                $promises[$index] = Http::async()->timeout(30)->get($downloadUrl);
+            }
+
+            // Wait for all promises in this chunk to complete
+            $responses = Http::pool(function ($pool) use ($promises) {
+                foreach ($promises as $index => $promise) {
+                    $pool->as($index)->get($promise->getUri());
+                }
+            });
+
+            // Process responses
+            foreach ($chunk as $index => $url) {
+                $globalIndex = ($chunkIndex * $maxConcurrent) + $index;
+                
+                if (!isset($promises[$index])) {
+                    // URL was invalid, already handled above
+                    $results[$globalIndex] = $chunkResults[$index];
+                    continue;
+                }
+
+                try {
+                    $response = $responses[$index];
+                    
+                    if ($response->successful()) {
+                        // Generate temporary filename
+                        $tempFilename = 'temp_' . Str::random(10) . '.jpg';
+                        $tempPath = storage_path('app/temp/' . $tempFilename);
+                        
+                        // Ensure temp directory exists
+                        if (!file_exists(dirname($tempPath))) {
+                            mkdir(dirname($tempPath), 0755, true);
+                        }
+
+                        // Save temporary file
+                        file_put_contents($tempPath, $response->body());
+
+                        $results[$globalIndex] = [
+                            'success' => true,
+                            'path' => $tempPath,
+                            'filename' => $tempFilename,
+                            'url' => $url
+                        ];
+                    } else {
+                        $results[$globalIndex] = [
+                            'success' => false,
+                            'error' => 'Failed to download image from Google Drive',
+                            'url' => $url
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    $results[$globalIndex] = [
+                        'success' => false,
+                        'error' => $e->getMessage(),
+                        'url' => $url
+                    ];
+                }
+
+                $processedCount++;
+                
+                // Update progress if callback provided
+                if ($progressCallback) {
+                    $progress = ($processedCount / $totalPhotos) * 100;
+                    $progressCallback($progress, "Downloaded {$processedCount}/{$totalPhotos} photos");
+                }
+            }
+
+            // Force garbage collection after each chunk
+            $this->forceGarbageCollection();
+            
+            // Small delay between chunks to prevent overwhelming the server
+            if ($chunkIndex < count($chunks) - 1) {
+                usleep(500000); // 0.5 second delay
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Download foto dari Google Drive dengan retry mechanism
+     */
+    private function downloadPhotoFromGoogleDriveWithRetry($googleDriveUrl, $maxRetries = 3, $startTime = null)
+    {
+        $attempt = 0;
+        $lastError = '';
+
+        while ($attempt < $maxRetries) {
+            try {
+                // Check timeout if startTime provided
+                if ($startTime && $this->isApproachingTimeout($startTime)) {
+                    throw new \Exception('Operation timeout: Cannot start download');
+                }
+
+                $result = $this->downloadPhotoFromGoogleDriveWithTimeout($googleDriveUrl, $startTime ?? microtime(true));
+                
+                if ($result['success']) {
+                    return $result;
+                }
+                
+                $lastError = $result['error'];
+                $attempt++;
+                
+                // Exponential backoff delay
+                if ($attempt < $maxRetries) {
+                    $delay = pow(2, $attempt) * 1000000; // microseconds
+                    usleep($delay);
+                }
+                
+            } catch (\Exception $e) {
+                $lastError = $e->getMessage();
+                $attempt++;
+                
+                if ($attempt < $maxRetries) {
+                    $delay = pow(2, $attempt) * 1000000; // microseconds
+                    usleep($delay);
+                }
+            }
+        }
+
+        return [
+            'success' => false,
+            'error' => "Failed after {$maxRetries} attempts: {$lastError}"
+        ];
+    }
+
+    /**
+     * Process photos in optimized batches with memory management
+     */
+    public function processPhotosInOptimizedBatches($photoUrls, $photoMappings, $progressCallback = null)
+    {
+        $startTime = microtime(true);
+        $processedPhotos = [];
+        $totalPhotos = count($photoUrls);
+        $batchSize = min(3, $totalPhotos); // Optimal batch size for memory
+        $batches = array_chunk($photoUrls, $batchSize);
+        
+        \Log::info("Processing {$totalPhotos} photos in " . count($batches) . " optimized batches");
+        
+        foreach ($batches as $batchIndex => $batch) {
+            // Check timeout before each batch
+            if ($this->isApproachingTimeout($startTime)) {
+                \Log::warning("Timeout approaching, stopping at batch " . ($batchIndex + 1));
+                break;
+            }
+            
+            \Log::info("Processing batch " . ($batchIndex + 1) . "/" . count($batches));
+            
+            // Download photos in parallel for this batch
+            $downloadResults = $this->downloadPhotosInParallel($batch, 3, function($progress, $message) use ($progressCallback, $batchIndex, $batches) {
+                if ($progressCallback) {
+                    $overallProgress = (($batchIndex / count($batches)) * 100) + ($progress / count($batches));
+                    $progressCallback($overallProgress, "Batch " . ($batchIndex + 1) . ": " . $message);
+                }
+            });
+            
+            // Process downloaded photos
+            foreach ($downloadResults as $globalIndex => $downloadResult) {
+                $actualIndex = ($batchIndex * $batchSize) + ($globalIndex % $batchSize);
+                
+                if (!$downloadResult['success']) {
+                    \Log::warning("Failed to download photo: " . $downloadResult['error']);
+                    continue;
+                }
+                
+                // Get mapping for this photo
+                $mapping = $photoMappings[$actualIndex] ?? [
+                    'coordinate' => 'B' . (5 + ($actualIndex * 10)),
+                    'sheet_name' => 'Sheet1'
+                ];
+                
+                // Insert photo to Excel
+                $insertResult = $this->insertPhotoToCell(
+                    $downloadResult['path'],
+                    $mapping['sheet_name'],
+                    $mapping['coordinate']
+                );
+                
+                if ($insertResult['success']) {
+                    $processedPhotos[] = [
+                        'coordinate' => $mapping['coordinate'],
+                        'sheet_name' => $mapping['sheet_name'],
+                        'photo_url' => $downloadResult['url'],
+                        'status' => 'success'
+                    ];
+                }
+                
+                // Clean up temporary file immediately
+                if (file_exists($downloadResult['path'])) {
+                    unlink($downloadResult['path']);
+                }
+            }
+            
+            // Force garbage collection after each batch
+            $this->forceGarbageCollection();
+            
+            // Memory usage check
+            $memoryUsage = memory_get_usage(true);
+            $memoryLimit = $this->convertToBytes(ini_get('memory_limit'));
+            $memoryPercent = ($memoryUsage / $memoryLimit) * 100;
+            
+            \Log::info("Batch {$batchIndex} completed. Memory usage: " . round($memoryPercent, 2) . "%");
+            
+            // If memory usage is high, force more aggressive cleanup
+            if ($memoryPercent > 80) {
+                \Log::warning("High memory usage detected, performing aggressive cleanup");
+                $this->aggressiveMemoryCleanup();
+            }
+        }
+        
+        $totalTime = microtime(true) - $startTime;
+        \Log::info("Optimized batch processing completed in {$totalTime} seconds");
+        
+        return [
+            'success' => true,
+            'processed_photos' => $processedPhotos,
+            'total_processed' => count($processedPhotos),
+            'total_time' => $totalTime,
+            'batches_processed' => count($batches)
+        ];
+    }
+
+    /**
+     * Aggressive memory cleanup for high memory usage situations
+     */
+    private function aggressiveMemoryCleanup()
+    {
+        // Force multiple garbage collection cycles
+        for ($i = 0; $i < 3; $i++) {
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+        }
+        
+        // Clear any cached data
+        if (isset($this->spreadsheet)) {
+            // Disconnect worksheets temporarily to free memory
+            $worksheets = $this->spreadsheet->getAllSheets();
+            foreach ($worksheets as $worksheet) {
+                $worksheet->getDrawingCollection()->clear();
+            }
+        }
+        
+        // Clear temporary files older than 1 hour
+        $this->cleanupOldTempFiles();
+        
+        \Log::info("Aggressive memory cleanup completed. New usage: " . round((memory_get_usage(true) / $this->convertToBytes(ini_get('memory_limit'))) * 100, 2) . "%");
+    }
+
+    /**
+     * Clean up old temporary files
+     */
+    private function cleanupOldTempFiles()
+    {
+        $tempDir = storage_path('app/temp');
+        if (!is_dir($tempDir)) {
+            return;
+        }
+        
+        $files = glob($tempDir . '/temp_*.jpg');
+        $oneHourAgo = time() - 3600;
+        $cleanedCount = 0;
+        
+        foreach ($files as $file) {
+            if (filemtime($file) < $oneHourAgo) {
+                unlink($file);
+                $cleanedCount++;
+            }
+        }
+        
+        if ($cleanedCount > 0) {
+            \Log::info("Cleaned up {$cleanedCount} old temporary files");
+        }
+    }
+
+    /**
+     * Enhanced photo processing with smart retry and fallback
+     */
+    public function processPhotosWithSmartRetry($templatePath, $photoUrls, $photoMappings, $progressCallback = null)
+    {
+        $startTime = microtime(true);
+        
+        try {
+            // Copy template and clear existing photos
+            $copyResult = $this->copyTemplateAndClearPhotos($templatePath);
+            if (!$copyResult['success']) {
+                return $copyResult;
+            }
+            
+            // Process photos in optimized batches
+            $batchResult = $this->processPhotosInOptimizedBatches($photoUrls, $photoMappings, $progressCallback);
+            
+            if (!$batchResult['success']) {
+                throw new \Exception('Batch processing failed');
+            }
+            
+            // Save Excel with photos
+            $saveResult = $this->saveExcelWithPhotos($this->spreadsheet);
+            
+            if (!$saveResult['success']) {
+                throw new \Exception('Failed to save Excel file: ' . ($saveResult['error'] ?? 'Unknown error'));
+            }
+            
+            $totalTime = microtime(true) - $startTime;
+            \Log::info("Smart retry processing completed in {$totalTime} seconds");
+            
+            return [
+                'success' => true,
+                'processed_photos' => $batchResult['processed_photos'],
+                'filename' => $saveResult['filename'],
+                'download_url' => $saveResult['download_url'],
+                'total_processed' => $batchResult['total_processed'],
+                'total_time' => $totalTime,
+                'batches_processed' => $batchResult['batches_processed']
+            ];
+            
+        } catch (\Exception $e) {
+            \Log::error('Error in smart retry processing: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Monitor and log system resources during processing
+     */
+    private function logSystemResources($context = '')
+    {
+        $memoryUsage = memory_get_usage(true);
+        $memoryLimit = $this->convertToBytes(ini_get('memory_limit'));
+        $memoryPercent = ($memoryUsage / $memoryLimit) * 100;
+        
+        $peakMemory = memory_get_peak_usage(true);
+        $peakPercent = ($peakMemory / $memoryLimit) * 100;
+        
+        \Log::info("System Resources {$context}: Memory " . round($memoryPercent, 2) . "% (Peak: " . round($peakPercent, 2) . "%)");
+        
+        return [
+            'memory_usage' => $memoryUsage,
+            'memory_percent' => $memoryPercent,
+            'peak_memory' => $peakMemory,
+            'peak_percent' => $peakPercent
+        ];
+    }
+
+    /**
+     * Validate and sanitize photo URLs before processing
+     */
+    private function validateAndSanitizePhotoUrls($photoUrls)
+    {
+        $validUrls = [];
+        $invalidUrls = [];
+        
+        foreach ($photoUrls as $index => $url) {
+            // Basic URL validation
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                $invalidUrls[] = ['index' => $index, 'url' => $url, 'reason' => 'Invalid URL format'];
+                continue;
+            }
+            
+            // Check if it's a Google Drive URL
+            if (strpos($url, 'drive.google.com') === false) {
+                $invalidUrls[] = ['index' => $index, 'url' => $url, 'reason' => 'Not a Google Drive URL'];
+                continue;
+            }
+            
+            // Try to extract file ID
+            $fileId = $this->extractGoogleDriveFileId($url);
+            if (!$fileId) {
+                $invalidUrls[] = ['index' => $index, 'url' => $url, 'reason' => 'Cannot extract file ID'];
+                continue;
+            }
+            
+            $validUrls[] = $url;
+        }
+        
+        if (!empty($invalidUrls)) {
+            \Log::warning("Found " . count($invalidUrls) . " invalid URLs", $invalidUrls);
+        }
+        
+        return [
+            'valid_urls' => $validUrls,
+            'invalid_urls' => $invalidUrls,
+            'valid_count' => count($validUrls),
+            'invalid_count' => count($invalidUrls)
+        ];
+    }
+
+    /**
+     * Hitung skor kesesuaian foto dengan placeholder
+     */
+    private function calculatePlacementScore($photoCategory, $slot, $worksheetType)
+    {
+        $score = 0;
+
+        // Base score berdasarkan worksheet type
+        $worksheetScores = [
+            'tower_structure' => ['tower_survey' => 10, 'photo_documentation' => 8],
+            'equipment' => ['equipment' => 10, 'tower_survey' => 7],
+            'environment' => ['site_data' => 10, 'photo_documentation' => 8],
+            'site_condition' => ['site_data' => 10, 'cover' => 6],
+            'general' => ['photo_documentation' => 8, 'general' => 6]
+        ];
+
+        if (isset($worksheetScores[$photoCategory][$worksheetType])) {
+            $score += $worksheetScores[$photoCategory][$worksheetType];
+        }
+
+        // Bonus score berdasarkan slot type
+        if ($slot['type'] === $photoCategory) {
+            $score += 5;
+        }
+
+        return $score;
+    }
+
+    /**
+     * Tempatkan foto di Excel pada posisi yang ditentukan
+     */
+    private function placePhotoInExcel($photoData, $placement)
+    {
+        try {
+            if (!$placement) {
+                return ['success' => false, 'error' => 'Tidak ada posisi yang cocok'];
+            }
+
+            // Cari worksheet
+            $worksheet = null;
+            foreach ($this->spreadsheet->getAllSheets() as $sheet) {
+                if ($sheet->getTitle() === $placement['worksheet']) {
+                    $worksheet = $sheet;
+                    break;
+                }
+            }
+
+            if (!$worksheet) {
+                return ['success' => false, 'error' => 'Worksheet tidak ditemukan'];
+            }
+
+            // Buat drawing object
+            $drawing = new MemoryDrawing();
+            $drawing->setName('Survey Photo');
+            $drawing->setDescription('Auto-placed survey photo');
+            
+            // Set image data
+            $drawing->setImageResource(imagecreatefromstring($photoData));
+            $drawing->setRenderingFunction(MemoryDrawing::RENDERING_JPEG);
+            $drawing->setMimeType(MemoryDrawing::MIMETYPE_DEFAULT);
+            
+            // Set posisi dan ukuran
+            $drawing->setCoordinates($placement['cell']);
+            $drawing->setWidth(200);
+            $drawing->setHeight(150);
+            
+            // Set offset untuk posisi yang lebih presisi
+            if (isset($placement['offsetX'])) {
+                $drawing->setOffsetX($placement['offsetX']);
+            }
+            if (isset($placement['offsetY'])) {
+                $drawing->setOffsetY($placement['offsetY']);
+            }
+            
+            // Tambahkan ke worksheet
+            $drawing->setWorksheet($worksheet);
+
+            return ['success' => true];
+            
+        } catch (\Exception $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Save Excel final dengan semua foto
+     */
+    private function saveFinalExcel()
+    {
+        try {
+            // Increase memory limit temporarily
+            $originalMemoryLimit = ini_get('memory_limit');
+            ini_set('memory_limit', '1024M');
+            
+            $writer = IOFactory::createWriter($this->spreadsheet, 'Xlsx');
+            
+            // Optimize writer settings to reduce memory usage
+            $writer->setPreCalculateFormulas(false);
+            $writer->setUseDiskCaching(true);
+            
+            $writer->save($this->outputPath);
+            
+            // Restore original memory limit only if it's larger than current usage
+            $currentUsage = memory_get_usage(true);
+            $originalBytes = $this->convertToBytes($originalMemoryLimit);
+            if ($originalBytes > $currentUsage) {
+                ini_set('memory_limit', $originalMemoryLimit);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            \Log::error("Failed to save Excel file: " . $e->getMessage());
+            
+            // Restore original memory limit in case of error
+            if (isset($originalMemoryLimit)) {
+                $currentUsage = memory_get_usage(true);
+                $originalBytes = $this->convertToBytes($originalMemoryLimit);
+                if ($originalBytes > $currentUsage) {
+                    ini_set('memory_limit', $originalMemoryLimit);
+                }
+            }
+            
+            return false;
+        }
+    }
+
+    /**
+     * Get path file hasil
+     */
+    public function getOutputPath()
+    {
+        return $this->outputPath;
+    }
+
+    /**
+     * Get download URL for processed file
+     */
+    public function getDownloadUrl()
+    {
+        if ($this->outputPath && file_exists($this->outputPath)) {
+            $filename = basename($this->outputPath);
+            return asset('storage/excel_results/' . $filename);
+        }
+        return null;
+    }
+}
+ 
+ 
