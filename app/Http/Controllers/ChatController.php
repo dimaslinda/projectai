@@ -103,7 +103,14 @@ class ChatController extends Controller
         $user = auth()->user();
 
         // Check if user can view this session
-        if ($session->user_id !== $user->id && !$session->canBeViewedByRole($user->role)) {
+        // User can view if they own the session OR if it's shared with their role
+        $isOwner = ($session->user_id === $user->id) || 
+                   ((int)$session->user_id === (int)$user->id) || 
+                   ($session->user_id == $user->id);
+        $canViewShared = $session->canBeViewedByRole($user->role);
+        $canView = $isOwner || $canViewShared;
+        
+        if (!$canView) {
             abort(403, 'Anda tidak memiliki izin untuk melihat sesi chat ini.');
         }
 
