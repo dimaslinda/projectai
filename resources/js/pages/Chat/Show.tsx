@@ -297,6 +297,20 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
         if ((!message.trim() && selectedImages.length === 0) || isSubmitting || isStreaming) return;
 
+        // Store current message and images before clearing
+        const currentMessage = message.trim();
+        const currentImages = [...selectedImages];
+
+        // Clear form state immediately after validation
+        setMessage('');
+        setSelectedImages([]);
+        setImagePreviews([]);
+
+        // Auto-resize textarea back to minimum height
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '60px';
+        }
+
         setIsSubmitting(true);
         setIsStreaming(true);
         setStreamingMessage('');
@@ -306,10 +320,10 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         setTimeout(() => scrollToBottom(), 100);
 
         const formData = new FormData();
-        formData.append('message', message.trim());
+        formData.append('message', currentMessage);
 
         // Add images to form data
-        selectedImages.forEach((image, index) => {
+        currentImages.forEach((image, index) => {
             formData.append(`images[${index}]`, image);
         });
 
@@ -346,9 +360,12 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const data = line.slice(6);
+                            
+                            // Handle [DONE] signal - this indicates streaming is complete
                             if (data === '[DONE]') {
                                 // Streaming completed, show notification and refresh data
                                 setIsStreaming(false);
+                                setIsSubmitting(false);
                                 setStreamingMessage('');
                                 showAIResponseNotification();
 
@@ -362,6 +379,8 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 });
                                 return;
                             }
+                            
+                            // Try to parse as JSON for structured data
                             try {
                                 const parsed = JSON.parse(data);
                                 if (parsed.type === 'chunk' && parsed.content) {
@@ -369,6 +388,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 } else if (parsed.type === 'complete') {
                                     // Streaming completed, show notification and refresh data
                                     setIsStreaming(false);
+                                    setIsSubmitting(false);
                                     setStreamingMessage('');
                                     showAIResponseNotification();
 
@@ -384,13 +404,21 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 } else if (parsed.type === 'error') {
                                     setStreamingMessage(parsed.content || 'Terjadi kesalahan');
                                     setIsStreaming(false);
+                                    setIsSubmitting(false);
                                     setTimeout(() => {
                                         router.reload({ only: ['session'] });
                                     }, 2000);
                                     return;
+                                } else if (parsed.type === 'start') {
+                                    // Handle start signal - just continue
+                                    continue;
                                 }
-                            } catch {
-                                // Ignore parsing errors for non-JSON lines
+                            } catch (parseError) {
+                                // If it's not valid JSON, treat it as plain text chunk
+                                // This handles cases where the backend sends plain text
+                                if (data.trim() && data !== '[DONE]') {
+                                    setStreamingMessage((prev) => prev + data);
+                                }
                             }
                         }
                     }
@@ -402,16 +430,6 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
             router.post(`/chat/${session.id}/message`, formData, {
                 forceFormData: true,
                 onSuccess: () => {
-                    // Reset form state after successful submission
-                    setMessage('');
-                    setSelectedImages([]);
-                    setImagePreviews([]);
-
-                    // Auto-resize textarea back to minimum height
-                    if (textareaRef.current) {
-                        textareaRef.current.style.height = '60px';
-                    }
-
                     // Show notification when AI response is complete
                     showAIResponseNotification();
                 },
@@ -424,16 +442,6 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                 },
             });
             return;
-        }
-
-        // Reset form state after successful submission
-        setMessage('');
-        setSelectedImages([]);
-        setImagePreviews([]);
-
-        // Auto-resize textarea back to minimum height
-        if (textareaRef.current) {
-            textareaRef.current.style.height = '60px';
         }
 
         setIsSubmitting(false);

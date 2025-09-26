@@ -23,6 +23,11 @@ class AIService
     public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
     {
         try {
+            // For persona chat type, validate if message is relevant to persona context
+            if ($chatType === 'persona' && $persona && !$this->isMessageRelevantToPersona($message, $persona)) {
+                return $this->generatePersonaRejectionResponse($persona);
+            }
+
             // Get persona-specific provider or fallback to default
             $personaProviders = config('ai.persona_providers', []);
             $selectedProvider = $persona ? ($personaProviders[$persona] ?? $this->provider) : $this->provider;
@@ -262,6 +267,167 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         ];
 
         return $personas[$persona] ?? 'Anda adalah asisten AI yang membantu dengan kebutuhan teknik dan bisnis. Jawab dalam bahasa Indonesia dengan profesional.';
+    }
+
+    /**
+     * Validate if a message is relevant to the persona's expertise
+     */
+    private function isMessageRelevantToPersona(string $message, string $persona): bool
+    {
+        // Convert message to lowercase for better matching
+        $messageLower = strtolower($message);
+        
+        // Define keywords for each persona
+        $personaKeywords = [
+            'engineer' => [
+                // Engineering keywords
+                'struktur', 'bangunan', 'konstruksi', 'beton', 'baja', 'fondasi', 'balok', 'kolom',
+                'analisis', 'perhitungan', 'beban', 'gempa', 'seismic', 'kekuatan', 'material',
+                'desain', 'blueprint', 'gambar teknik', 'spesifikasi', 'standar', 'kode bangunan',
+                'sipil', 'engineering', 'teknik', 'infrastruktur', 'jembatan', 'gedung',
+                'autocad', 'cad', 'sap2000', 'etabs', 'staad', 'tekla', 'revit'
+            ],
+            'drafter' => [
+                // Drafting keywords
+                'gambar', 'drawing', 'draft', 'blueprint', 'sketsa', 'rencana', 'denah',
+                'autocad', 'cad', 'dwg', 'dxf', 'layout', 'dimensi', 'skala', 'proyeksi',
+                'detail', 'potongan', 'tampak', 'isometrik', 'perspektif', 'rendering',
+                'dokumentasi', 'spesifikasi', 'standar gambar', 'simbol', 'notasi',
+                'revit', 'sketchup', 'solidworks', 'inventor', 'fusion', 'tekla'
+            ],
+            'esr' => [
+                // Tower survey keywords
+                'tower', 'menara', 'telekomunikasi', 'antenna', 'antena', 'bts', 'survey',
+                'orientasi', 'depan', 'samping', 'belakang', 'struktur tower', 'equipment',
+                'perangkat', 'mounting', 'feeder', 'coaxial', 'waveguide', 'grounding',
+                'guy wire', 'foundation', 'base station', 'cellular', 'radio', 'microwave'
+            ],
+            'hr' => [
+                // HR keywords
+                'karyawan', 'pegawai', 'sdm', 'human resource', 'rekrutmen', 'recruitment',
+                'interview', 'wawancara', 'seleksi', 'training', 'pelatihan', 'pengembangan',
+                'kinerja', 'performance', 'evaluasi', 'promosi', 'karir', 'gaji', 'benefit',
+                'kebijakan', 'policy', 'absensi', 'cuti', 'disiplin', 'motivasi', 'leadership'
+            ],
+            'finance' => [
+                // Finance keywords
+                'keuangan', 'finance', 'akuntansi', 'accounting', 'laporan', 'budget', 'anggaran',
+                'cash flow', 'arus kas', 'investasi', 'profit', 'loss', 'revenue', 'pendapatan',
+                'biaya', 'cost', 'pajak', 'tax', 'audit', 'balance sheet', 'neraca',
+                'income statement', 'laba rugi', 'roi', 'npv', 'irr', 'payback period'
+            ],
+            'it' => [
+                // IT keywords
+                'teknologi', 'technology', 'sistem', 'system', 'software', 'hardware', 'network',
+                'jaringan', 'server', 'database', 'programming', 'coding', 'development',
+                'website', 'aplikasi', 'application', 'security', 'keamanan', 'backup',
+                'cloud', 'infrastructure', 'troubleshooting', 'maintenance', 'upgrade'
+            ],
+            'marketing' => [
+                // Marketing keywords
+                'pemasaran', 'marketing', 'promosi', 'promotion', 'iklan', 'advertising',
+                'brand', 'branding', 'campaign', 'kampanye', 'digital marketing', 'social media',
+                'content', 'konten', 'seo', 'sem', 'google ads', 'facebook ads', 'instagram',
+                'customer', 'pelanggan', 'target market', 'segmentasi', 'positioning'
+            ],
+            'operations' => [
+                // Operations keywords
+                'operasional', 'operations', 'proses', 'process', 'produksi', 'production',
+                'supply chain', 'logistik', 'logistics', 'inventory', 'stock', 'quality',
+                'kualitas', 'control', 'improvement', 'efficiency', 'efisiensi', 'workflow',
+                'sop', 'standard operating procedure', 'lean', 'six sigma', 'kaizen'
+            ],
+            'legal' => [
+                // Legal keywords
+                'hukum', 'legal', 'kontrak', 'contract', 'perjanjian', 'agreement', 'compliance',
+                'regulasi', 'regulation', 'undang-undang', 'peraturan', 'litigation', 'dispute',
+                'intellectual property', 'patent', 'trademark', 'copyright', 'license',
+                'corporate law', 'business law', 'employment law', 'tax law'
+            ]
+        ];
+
+        // Get keywords for the current persona
+        $keywords = $personaKeywords[$persona] ?? [];
+        
+        // Check if any keyword matches the message
+        foreach ($keywords as $keyword) {
+            if (strpos($messageLower, strtolower($keyword)) !== false) {
+                return true;
+            }
+        }
+
+        // Additional check for common greetings and persona-related questions
+        $commonPhrases = [
+            'halo', 'hai', 'hello', 'selamat', 'terima kasih', 'thanks', 'tolong', 'bantu',
+            'bisa', 'dapat', 'help', 'assist', 'bagaimana', 'how', 'apa', 'what',
+            'siapa', 'who', 'dimana', 'where', 'kapan', 'when', 'mengapa', 'why'
+        ];
+
+        foreach ($commonPhrases as $phrase) {
+            if (strpos($messageLower, $phrase) !== false) {
+                // If it's a greeting or general question, check if it mentions the persona context
+                $personaContext = [
+                    'engineer' => ['engineer', 'insinyur', 'teknik', 'engineering'],
+                    'drafter' => ['drafter', 'gambar', 'drawing', 'draft'],
+                    'esr' => ['esr', 'tower', 'survey', 'menara'],
+                    'hr' => ['hr', 'human resource', 'sdm', 'karyawan'],
+                    'finance' => ['finance', 'keuangan', 'akuntansi'],
+                    'it' => ['it', 'teknologi', 'sistem'],
+                    'marketing' => ['marketing', 'pemasaran'],
+                    'operations' => ['operations', 'operasional'],
+                    'legal' => ['legal', 'hukum']
+                ];
+
+                $contextKeywords = $personaContext[$persona] ?? [];
+                foreach ($contextKeywords as $contextKeyword) {
+                    if (strpos($messageLower, strtolower($contextKeyword)) !== false) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Generate rejection response for off-topic queries
+     */
+    private function generatePersonaRejectionResponse(string $persona): string
+    {
+        $personaNames = [
+            'engineer' => 'Insinyur Sipil',
+            'drafter' => 'Drafter Teknis',
+            'esr' => 'Spesialis Tower Survey (ESR)',
+            'hr' => 'Spesialis Human Resources',
+            'finance' => 'Spesialis Keuangan',
+            'it' => 'Spesialis IT',
+            'marketing' => 'Spesialis Marketing',
+            'operations' => 'Spesialis Operations',
+            'legal' => 'Spesialis Legal'
+        ];
+
+        $personaExpertise = [
+            'engineer' => 'desain struktural, analisis bangunan, perhitungan teknik, spesifikasi material, dan konsultasi engineering',
+            'drafter' => 'pembuatan gambar teknik, dokumentasi CAD, blueprint, dan spesifikasi teknis',
+            'esr' => 'analisis gambar survey tower telekomunikasi, identifikasi orientasi tower, dan evaluasi kondisi struktur',
+            'hr' => 'manajemen SDM, rekrutmen, pengembangan karyawan, dan kebijakan perusahaan',
+            'finance' => 'analisis keuangan, budgeting, perencanaan keuangan, dan manajemen risiko',
+            'it' => 'teknologi informasi, pengembangan sistem, keamanan siber, dan infrastruktur IT',
+            'marketing' => 'strategi pemasaran, branding, digital marketing, dan analisis pasar',
+            'operations' => 'manajemen operasional, supply chain, quality control, dan process improvement',
+            'legal' => 'hukum bisnis, kontrak, compliance, dan regulasi'
+        ];
+
+        $personaName = $personaNames[$persona] ?? 'Spesialis';
+        $expertise = $personaExpertise[$persona] ?? 'bidang keahlian khusus';
+
+        return "Maaf, saya adalah **{$personaName}** yang mengkhususkan diri dalam **{$expertise}**.\n\n" .
+               "Pertanyaan Anda tampaknya berada di luar bidang keahlian saya. Untuk mendapatkan bantuan dengan topik tersebut, silakan:\n\n" .
+               "1. **Gunakan Chat Global** - untuk pertanyaan umum dan topik di luar persona\n" .
+               "2. **Pilih persona yang sesuai** - jika ada persona lain yang lebih relevan\n" .
+               "3. **Ajukan pertanyaan yang relevan** - terkait dengan {$expertise}\n\n" .
+               "Saya siap membantu Anda dengan pertanyaan yang berkaitan dengan bidang keahlian saya! 😊";
     }
 
     private function generateFallbackResponse(string $message, ?string $persona, string $chatType = 'persona', array $imageUrls = []): string

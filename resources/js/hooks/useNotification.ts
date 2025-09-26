@@ -162,7 +162,7 @@ export function useNotification() {
         const {
             title = 'ProjectAI',
             body = 'AI telah selesai memberikan response',
-            icon = '/favicon.svg',
+            icon = '/asset/img/Icon.png',
             playSound = true,
             soundUrl
         } = options;
@@ -234,7 +234,7 @@ export function useNotification() {
             showNotification({
                 title: 'ProjectAI - Response Ready',
                 body: 'AI telah selesai memberikan response Anda',
-                icon: '/favicon.svg',
+                icon: '/asset/img/Icon.png',
                 playSound: soundEnabled
             });
         }

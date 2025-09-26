@@ -69,7 +69,7 @@ export default function NotificationSettings({ open, onOpenChange }: Notificatio
                 await showNotification({
                     title: 'ProjectAI - Test',
                     body: 'Ini adalah test notifikasi AI response',
-                    icon: '/favicon.svg',
+                    icon: '/asset/img/Icon.png',
                     playSound: soundEnabled,
                 });
             } catch (error) {
