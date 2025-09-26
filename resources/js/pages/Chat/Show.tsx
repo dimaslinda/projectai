@@ -413,7 +413,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     // Handle start signal - just continue
                                     continue;
                                 }
-                            } catch (parseError) {
+                            } catch {
                                 // If it's not valid JSON, treat it as plain text chunk
                                 // This handles cases where the backend sends plain text
                                 if (data.trim() && data !== '[DONE]') {
