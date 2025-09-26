@@ -44,7 +44,7 @@ export function useNotification() {
                 audioRef.current = null;
             }
         };
-    }, []);
+    }, [permission]);
 
     const requestPermission = async (): Promise<NotificationPermission> => {
         if (!('Notification' in window)) {

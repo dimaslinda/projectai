@@ -46,7 +46,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const [isDragOver, setIsDragOver] = useState(false);
     const [streamingMessage, setStreamingMessage] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
-    const [previousMessageCount, setPreviousMessageCount] = useState(session.chat_histories.length);
+
     const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -60,7 +60,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const scrollToBottom = () => {
+    const scrollToBottom = useCallback(() => {
         if (chatContainerRef.current) {
             // Use smooth scrolling with better performance
             chatContainerRef.current.scrollTo({
@@ -71,16 +71,16 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
             // Fallback to messagesEndRef if chatContainerRef is not available
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    };
+    }, []);
 
-    const throttledScrollToBottom = () => {
+    const throttledScrollToBottom = useCallback(() => {
         if (scrollTimeoutRef.current) {
             clearTimeout(scrollTimeoutRef.current);
         }
         scrollTimeoutRef.current = setTimeout(() => {
             scrollToBottom();
         }, 50); // Throttle to 50ms for smooth streaming
-    };
+    }, [scrollToBottom]);
 
     const checkIfNearBottom = () => {
         if (!chatContainerRef.current) return true;
@@ -98,7 +98,11 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
         scrollCheckTimeoutRef.current = setTimeout(() => {
             setShouldAutoScroll(checkIfNearBottom());
-        }, 16); // ~60fps
+        }, 150); // Debounce to 150ms
+    }, []);
+
+    const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setMessage(e.target.value);
     }, []);
 
     // Auto-scroll only when user is near bottom or when sending a new message
@@ -106,19 +110,16 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         if (shouldAutoScroll || isSubmitting) {
             scrollToBottom();
         }
-    }, [session.chat_histories, shouldAutoScroll, isSubmitting]);
+    }, [session.chat_histories, shouldAutoScroll, isSubmitting, scrollToBottom]);
 
     // Auto-scroll during streaming only if user is near bottom (throttled for performance)
     useEffect(() => {
         if (shouldAutoScroll && streamingMessage) {
             throttledScrollToBottom();
         }
-    }, [streamingMessage, shouldAutoScroll]);
+    }, [streamingMessage, shouldAutoScroll, throttledScrollToBottom]);
 
-    // Update previous message count when chat histories change
-    useEffect(() => {
-        setPreviousMessageCount(session.chat_histories.length);
-    }, [session.chat_histories]);
+
 
     // Cleanup scroll timeouts on unmount
     useEffect(() => {
@@ -132,22 +133,8 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         };
     }, []);
 
-    useEffect(() => {
-        const handlePaste = (e: ClipboardEvent) => {
-            // Only handle paste when the textarea is focused or when in the chat area
-            if (textareaRef.current && (document.activeElement === textareaRef.current || textareaRef.current.contains(document.activeElement))) {
-                handleClipboardPaste(e);
-            }
-        };
-
-        document.addEventListener('paste', handlePaste);
-        return () => {
-            document.removeEventListener('paste', handlePaste);
-        };
-    }, []);
-
     // Enhanced file handling functions from PhotoOrganizer
-    const validateFile = (file: File): { valid: boolean; error?: string } => {
+    const validateFile = useCallback((file: File): { valid: boolean; error?: string } => {
         // Check file type
         const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
         if (!allowedTypes.includes(file.type)) {
@@ -161,7 +148,54 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         }
 
         return { valid: true };
-    };
+    }, []);
+
+    const handleClipboardPaste = useCallback((e: ClipboardEvent) => {
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        const items = Array.from(clipboardData.items);
+        const imageItems = items.filter((item) => item.type.startsWith('image/'));
+
+        if (imageItems.length > 0) {
+            e.preventDefault(); // Prevent default paste behavior for images
+
+            imageItems.forEach((item) => {
+                const file = item.getAsFile();
+                if (file) {
+                    const validation = validateFile(file);
+                    if (!validation.valid) {
+                        alert(validation.error!);
+                        return;
+                    }
+
+                    // Add to selected images
+                    setSelectedImages((prev) => [...prev, file]);
+
+                    // Create preview
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setImagePreviews((prev) => [...prev, e.target?.result as string]);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+    }, [validateFile]);
+
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            // Only handle paste when the textarea is focused or when in the chat area
+            if (textareaRef.current && (document.activeElement === textareaRef.current || textareaRef.current.contains(document.activeElement))) {
+                handleClipboardPaste(e);
+            }
+        };
+
+        document.addEventListener('paste', handlePaste);
+        return () => {
+            document.removeEventListener('paste', handlePaste);
+        };
+    }, [handleClipboardPaste]);
 
     const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || []);
@@ -256,40 +290,9 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         }
     };
 
-    const handleClipboardPaste = (e: ClipboardEvent) => {
-        const clipboardData = e.clipboardData;
-        if (!clipboardData) return;
 
-        const items = Array.from(clipboardData.items);
-        const imageItems = items.filter((item) => item.type.startsWith('image/'));
 
-        if (imageItems.length > 0) {
-            e.preventDefault(); // Prevent default paste behavior for images
-
-            imageItems.forEach((item) => {
-                const file = item.getAsFile();
-                if (file) {
-                    const validation = validateFile(file);
-                    if (!validation.valid) {
-                        alert(validation.error!);
-                        return;
-                    }
-
-                    // Add to selected images
-                    setSelectedImages((prev) => [...prev, file]);
-
-                    // Create preview
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        setImagePreviews((prev) => [...prev, e.target?.result as string]);
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-    };
-
-    const handleSendMessage = async (e: React.FormEvent) => {
+    const handleSendMessage = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
 
         if ((!message.trim() && selectedImages.length === 0) || isSubmitting || isStreaming) return;
@@ -386,7 +389,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     }, 2000);
                                     return;
                                 }
-                            } catch (e) {
+                            } catch {
                                 // Ignore parsing errors for non-JSON lines
                             }
                         }
@@ -435,7 +438,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
         setIsSubmitting(false);
         setIsStreaming(false);
-    };
+    }, [message, selectedImages, isSubmitting, isStreaming, session.id, showAIResponseNotification, scrollToBottom]);
 
     const handleToggleSharing = () => {
         router.patch(
@@ -464,7 +467,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                 }
             }
         },
-        [message, isSubmitting, handleSendMessage],
+        [message, isSubmitting, handleSendMessage, scrollToBottom],
     );
 
     const formatTime = (dateString: string) => {
@@ -782,7 +785,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 <Textarea
                                     ref={textareaRef}
                                     value={message}
-                                    onChange={useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value), [])}
+                                    onChange={handleMessageChange}
                                     onKeyDown={handleKeyDown}
                                     placeholder="Ketik pesan Anda..."
                                     className="max-h-[120px] min-h-[60px] resize-none rounded-xl border-gray-200 bg-white shadow-sm transition-all duration-200 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
