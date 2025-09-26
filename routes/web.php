@@ -28,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/bulk-delete', [App\Http\Controllers\ChatController::class, 'bulkDestroy'])->name('bulk-destroy');
         Route::get('/{session}', [App\Http\Controllers\ChatController::class, 'show'])->name('show');
         Route::post('/{session}/message', [App\Http\Controllers\ChatController::class, 'sendMessage'])->middleware('large-uploads')->name('send-message');
+        Route::post('/{session}/message-stream', [App\Http\Controllers\ChatController::class, 'createMessageStream'])->middleware('large-uploads')->name('send-message-stream');
         Route::patch('/{session}/toggle-sharing', [App\Http\Controllers\ChatController::class, 'toggleSharing'])->name('toggle-sharing');
         Route::delete('/{session}', [App\Http\Controllers\ChatController::class, 'destroy'])->name('destroy');
     });

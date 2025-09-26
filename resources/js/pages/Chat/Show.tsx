@@ -1,7 +1,8 @@
 import { Head, router } from '@inertiajs/react';
-import { ArrowLeft, Bot, ImagePlus, Send, Settings, Share2, Trash2, User, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Bot, ImagePlus, Send, Settings, Share2, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import ChatMessage from '@/components/ChatMessage';
 import MessageContent from '@/components/MessageContent';
 import NotificationSettings from '@/components/NotificationSettings';
 import {
@@ -18,7 +19,6 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNotification } from '@/hooks/useNotification';
@@ -39,12 +39,13 @@ interface ChatShowProps {
 }
 
 export default function ChatShow({ session, canEdit }: ChatShowProps) {
-
     const [message, setMessage] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [streamingMessage, setStreamingMessage] = useState('');
+    const [isStreaming, setIsStreaming] = useState(false);
     const [previousMessageCount, setPreviousMessageCount] = useState(session.chat_histories.length);
     const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,34 +55,82 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     // Hook untuk notifikasi
     const { showAIResponseNotification } = useNotification();
 
+    const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const scrollCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (chatContainerRef.current) {
+            // Use smooth scrolling with better performance
+            chatContainerRef.current.scrollTo({
+                top: chatContainerRef.current.scrollHeight,
+                behavior: 'smooth',
+            });
+        } else {
+            // Fallback to messagesEndRef if chatContainerRef is not available
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
     };
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [session.chat_histories, isSubmitting]);
+    const throttledScrollToBottom = () => {
+        if (scrollTimeoutRef.current) {
+            clearTimeout(scrollTimeoutRef.current);
+        }
+        scrollTimeoutRef.current = setTimeout(() => {
+            scrollToBottom();
+        }, 50); // Throttle to 50ms for smooth streaming
+    };
 
-    // Effect untuk mendeteksi response AI baru dan memicu notifikasi
-    useEffect(() => {
-        const currentMessageCount = session.chat_histories.length;
+    const checkIfNearBottom = () => {
+        if (!chatContainerRef.current) return true;
 
-        // Jika ada pesan baru dan bukan sedang submit (artinya response dari AI)
-        if (currentMessageCount > previousMessageCount && !isSubmitting) {
-            const latestMessage = session.chat_histories[currentMessageCount - 1];
+        const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+        const threshold = 100; // 100px from bottom
+        return scrollHeight - scrollTop - clientHeight < threshold;
+    };
 
-            // Pastikan pesan terakhir adalah dari AI (bukan user)
-            if (latestMessage && latestMessage.sender === 'ai') {
-                // Delay sedikit untuk memastikan UI sudah terupdate
-                setTimeout(() => {
-                    showAIResponseNotification();
-                }, 500);
-            }
+    const handleScroll = useCallback(() => {
+        // Debounce scroll check to improve performance
+        if (scrollCheckTimeoutRef.current) {
+            clearTimeout(scrollCheckTimeoutRef.current);
         }
 
-        // Update previous message count
-        setPreviousMessageCount(currentMessageCount);
-    }, [session.chat_histories, isSubmitting, previousMessageCount, showAIResponseNotification]);
+        scrollCheckTimeoutRef.current = setTimeout(() => {
+            setShouldAutoScroll(checkIfNearBottom());
+        }, 16); // ~60fps
+    }, []);
+
+    // Auto-scroll only when user is near bottom or when sending a new message
+    useEffect(() => {
+        if (shouldAutoScroll || isSubmitting) {
+            scrollToBottom();
+        }
+    }, [session.chat_histories, shouldAutoScroll, isSubmitting]);
+
+    // Auto-scroll during streaming only if user is near bottom (throttled for performance)
+    useEffect(() => {
+        if (shouldAutoScroll && streamingMessage) {
+            throttledScrollToBottom();
+        }
+    }, [streamingMessage, shouldAutoScroll]);
+
+    // Update previous message count when chat histories change
+    useEffect(() => {
+        setPreviousMessageCount(session.chat_histories.length);
+    }, [session.chat_histories]);
+
+    // Cleanup scroll timeouts on unmount
+    useEffect(() => {
+        return () => {
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+            if (scrollCheckTimeoutRef.current) {
+                clearTimeout(scrollCheckTimeoutRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         const handlePaste = (e: ClipboardEvent) => {
@@ -243,9 +292,15 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if ((!message.trim() && selectedImages.length === 0) || isSubmitting) return;
+        if ((!message.trim() && selectedImages.length === 0) || isSubmitting || isStreaming) return;
 
         setIsSubmitting(true);
+        setIsStreaming(true);
+        setStreamingMessage('');
+
+        // Force scroll to bottom when user sends a message
+        setShouldAutoScroll(true);
+        setTimeout(() => scrollToBottom(), 100);
 
         const formData = new FormData();
         formData.append('message', message.trim());
@@ -255,27 +310,131 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
             formData.append(`images[${index}]`, image);
         });
 
-        router.post(`/chat/${session.id}/message`, formData, {
-            forceFormData: true,
-            onSuccess: () => {
-                // Reset form state after successful submission
-                setMessage('');
-                setSelectedImages([]);
-                setImagePreviews([]);
+        try {
+            // Use fetch for streaming instead of router.post
+            const response = await fetch(`/chat/${session.id}/message-stream`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    Accept: 'text/event-stream',
+                },
+            });
 
-                // Auto-resize textarea back to minimum height
-                if (textareaRef.current) {
-                    textareaRef.current.style.height = '60px';
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+
+            if (reader) {
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') {
+                                // Streaming completed, show notification and refresh data
+                                setIsStreaming(false);
+                                setStreamingMessage('');
+                                showAIResponseNotification();
+
+                                // Refresh the page data without full reload
+                                router.reload({
+                                    only: ['session'],
+                                    onSuccess: () => {
+                                        // Auto-scroll to bottom after data is reloaded
+                                        setTimeout(() => scrollToBottom(), 100);
+                                    },
+                                });
+                                return;
+                            }
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.type === 'chunk' && parsed.content) {
+                                    setStreamingMessage((prev) => prev + parsed.content);
+                                } else if (parsed.type === 'complete') {
+                                    // Streaming completed, show notification and refresh data
+                                    setIsStreaming(false);
+                                    setStreamingMessage('');
+                                    showAIResponseNotification();
+
+                                    // Refresh the page data without full reload
+                                    router.reload({
+                                        only: ['session'],
+                                        onSuccess: () => {
+                                            // Auto-scroll to bottom after data is reloaded
+                                            setTimeout(() => scrollToBottom(), 100);
+                                        },
+                                    });
+                                    return;
+                                } else if (parsed.type === 'error') {
+                                    setStreamingMessage(parsed.content || 'Terjadi kesalahan');
+                                    setIsStreaming(false);
+                                    setTimeout(() => {
+                                        router.reload({ only: ['session'] });
+                                    }, 2000);
+                                    return;
+                                }
+                            } catch (e) {
+                                // Ignore parsing errors for non-JSON lines
+                            }
+                        }
+                    }
                 }
-            },
-            onError: (error) => {
-                console.error('Error sending message:', error);
-            },
-            onFinish: () => {
-                // Always reset submitting state when request is completely finished
-                setIsSubmitting(false);
-            },
-        });
+            }
+        } catch (error) {
+            console.error('Error sending message:', error);
+            // Fallback to regular submission
+            router.post(`/chat/${session.id}/message`, formData, {
+                forceFormData: true,
+                onSuccess: () => {
+                    // Reset form state after successful submission
+                    setMessage('');
+                    setSelectedImages([]);
+                    setImagePreviews([]);
+
+                    // Auto-resize textarea back to minimum height
+                    if (textareaRef.current) {
+                        textareaRef.current.style.height = '60px';
+                    }
+
+                    // Show notification when AI response is complete
+                    showAIResponseNotification();
+                },
+                onError: (error) => {
+                    console.error('Error sending message:', error);
+                },
+                onFinish: () => {
+                    setIsSubmitting(false);
+                    setIsStreaming(false);
+                },
+            });
+            return;
+        }
+
+        // Reset form state after successful submission
+        setMessage('');
+        setSelectedImages([]);
+        setImagePreviews([]);
+
+        // Auto-resize textarea back to minimum height
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '60px';
+        }
+
+        setIsSubmitting(false);
+        setIsStreaming(false);
     };
 
     const handleToggleSharing = () => {
@@ -292,12 +451,21 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         router.delete(`/chat/${session.id}`);
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage(e);
-        }
-    };
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (message.trim() && !isSubmitting) {
+                    setShouldAutoScroll(true);
+                    setTimeout(() => {
+                        scrollToBottom();
+                    }, 100);
+                    handleSendMessage(e);
+                }
+            }
+        },
+        [message, isSubmitting, handleSendMessage],
+    );
 
     const formatTime = (dateString: string) => {
         return new Date(dateString).toLocaleTimeString('id-ID', {
@@ -447,7 +615,11 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                 </div>
 
                 {/* Messages */}
-                <div className="flex-1 space-y-6 overflow-y-auto bg-gradient-to-b from-gray-50/50 to-white p-6 dark:from-gray-900/50 dark:to-gray-950">
+                <div
+                    ref={chatContainerRef}
+                    onScroll={handleScroll}
+                    className="flex-1 space-y-6 overflow-y-auto bg-gradient-to-b from-gray-50/50 to-white p-6 dark:from-gray-900/50 dark:to-gray-950"
+                >
                     {session.chat_histories.length === 0 ? (
                         <div className="flex h-full flex-col items-center justify-center text-center">
                             <div className="mb-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 p-4 shadow-lg">
@@ -462,116 +634,29 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                         </div>
                     ) : (
                         session.chat_histories.map((chat) => (
-                            <div
+                            <ChatMessage
                                 key={chat.id}
-                                className={`flex gap-4 ${chat.sender === 'user' ? 'justify-end' : 'justify-start'} duration-300 animate-in slide-in-from-bottom-2`}
-                            >
-                                {chat.sender === 'ai' && (
-                                    <div className="flex flex-col items-center gap-1">
-                                        <Avatar className="h-10 w-10 shadow-md ring-2 ring-primary/20 dark:ring-primary/30">
-                                            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/90 text-primary-foreground">
-                                                <Bot className="h-5 w-5" />
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        {session.chat_type === 'persona' && session.persona && (
-                                            <Badge
-                                                variant="secondary"
-                                                className="border-accent-foreground/20 bg-accent px-2 py-0.5 text-xs text-accent-foreground duration-300 animate-in fade-in-50"
-                                            >
-                                                {session.persona}
-                                            </Badge>
-                                        )}
-                                    </div>
-                                )}
-
-                                <div className={`max-w-[75%] ${chat.sender === 'user' ? 'order-1' : ''}`}>
-                                    <div
-                                        className={`group relative ${
-                                            chat.sender === 'user'
-                                                ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg shadow-primary/25'
-                                                : 'border border-border bg-card shadow-lg shadow-black/5 dark:shadow-black/20'
-                                        } rounded-2xl p-4 transition-all duration-200 hover:shadow-xl ${
-                                            chat.sender === 'user' ? 'hover:shadow-primary/30' : 'hover:shadow-black/10 dark:hover:shadow-black/30'
-                                        }`}
-                                    >
-                                        {chat.sender === 'user' ? (
-                                            <div className="space-y-3">
-                                                {/* Display uploaded images if any */}
-                                                {chat.metadata?.images && Array.isArray(chat.metadata.images) && chat.metadata.images.length > 0 && (
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        {chat.metadata.images.map((imageUrl: string, index: number) => (
-                                                            <div key={index} className="group relative">
-                                                                <img
-                                                                    src={imageUrl}
-                                                                    alt={`Uploaded image ${index + 1}`}
-                                                                    className="h-32 w-full rounded-lg object-cover shadow-sm transition-shadow duration-200 group-hover:shadow-md"
-                                                                />
-                                                                <div className="bg-opacity-0 group-hover:bg-opacity-10 absolute inset-0 flex items-center justify-center rounded-lg transition-all duration-200">
-                                                                    <button
-                                                                        onClick={() => window.open(imageUrl, '_blank')}
-                                                                        className="bg-opacity-90 hover:bg-opacity-100 rounded-full bg-white p-2 opacity-0 transition-all duration-200 group-hover:opacity-100"
-                                                                    >
-                                                                        <svg
-                                                                            className="h-4 w-4 text-gray-700"
-                                                                            fill="none"
-                                                                            stroke="currentColor"
-                                                                            viewBox="0 0 24 24"
-                                                                        >
-                                                                            <path
-                                                                                strokeLinecap="round"
-                                                                                strokeLinejoin="round"
-                                                                                strokeWidth={2}
-                                                                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                                                                            />
-                                                                        </svg>
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{chat.message}</p>
-                                            </div>
-                                        ) : (
-                                            <MessageContent content={chat.message} className="text-sm leading-relaxed" />
-                                        )}
-                                        <p
-                                            className={`mt-3 flex items-center gap-1 text-xs ${
-                                                chat.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                                            }`}
-                                        >
-                                            <span
-                                                className={`h-1.5 w-1.5 rounded-full ${chat.sender === 'user' ? 'bg-primary-foreground/50' : 'bg-muted-foreground/50'}`}
-                                            ></span>
-                                            {formatTime(chat.created_at)}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {chat.sender === 'user' && (
-                                    <Avatar className="order-2 h-10 w-10 shadow-md ring-2 ring-secondary/20 dark:ring-secondary/30">
-                                        <AvatarFallback className="bg-gradient-to-br from-secondary to-secondary/90 text-secondary-foreground">
-                                            <User className="h-5 w-5" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                )}
-                            </div>
+                                chat={chat}
+                                sessionPersona={session.persona}
+                                sessionChatType={session.chat_type}
+                                formatTime={formatTime}
+                            />
                         ))
                     )}
 
-                    {/* AI Loading Skeleton */}
-                    {isSubmitting && (
+                    {/* AI Streaming Message */}
+                    {isStreaming && (
                         <div className="flex justify-start gap-4 duration-300 animate-in slide-in-from-bottom-2">
                             <div className="flex flex-col items-center gap-1">
-                                <Avatar className="h-10 w-10 shadow-md ring-2 ring-blue-100 dark:ring-blue-900">
-                                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                                        <img src="/asset/img/Icon.png" alt="AI" className="h-5 w-5 animate-pulse" />
+                                <Avatar className="h-10 w-10 shadow-md ring-2 ring-primary/20 dark:ring-primary/30">
+                                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/90 text-primary-foreground">
+                                        <Bot className="h-5 w-5" />
                                     </AvatarFallback>
                                 </Avatar>
                                 {session.chat_type === 'persona' && session.persona && (
                                     <Badge
                                         variant="secondary"
-                                        className="border-purple-200 bg-purple-100 px-2 py-0.5 text-xs text-purple-700 duration-300 animate-in fade-in-50 dark:border-purple-800 dark:bg-purple-900 dark:text-purple-300"
+                                        className="border-accent-foreground/20 bg-accent px-2 py-0.5 text-xs text-accent-foreground duration-300 animate-in fade-in-50"
                                     >
                                         {session.persona}
                                     </Badge>
@@ -579,21 +664,23 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             </div>
 
                             <div className="max-w-[75%]">
-                                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-lg shadow-gray-500/10 transition-all duration-200 dark:border-gray-700 dark:bg-gray-800">
+                                <div className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-black/5 transition-all duration-200 dark:shadow-black/20">
                                     <div className="space-y-3">
-                                        <div className="space-y-2">
-                                            <Skeleton className="h-4 w-full animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
-                                            <Skeleton className="h-4 w-4/5 animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 [animation-delay:0.2s] dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
-                                            <Skeleton className="h-4 w-3/5 animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 [animation-delay:0.4s] dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
-                                        </div>
-                                        <div className="mt-4 flex items-center gap-2">
-                                            <div className="flex space-x-1">
-                                                <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-blue-500 to-blue-600 [animation-delay:-0.3s]" />
-                                                <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-blue-500 to-blue-600 [animation-delay:-0.15s]" />
-                                                <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-blue-500 to-blue-600" />
+                                        {streamingMessage ? (
+                                            <div className="text-sm leading-relaxed">
+                                                <MessageContent content={streamingMessage} className="text-sm leading-relaxed" />
+                                                <span className="ml-1 animate-pulse text-primary">|</span>
                                             </div>
-                                            <span className="ml-2 animate-pulse text-xs text-muted-foreground">AI sedang mengetik...</span>
-                                        </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex space-x-1">
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80 [animation-delay:-0.3s]" />
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80 [animation-delay:-0.15s]" />
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80" />
+                                                </div>
+                                                <span className="ml-2 animate-pulse text-xs text-muted-foreground">AI sedang mengetik...</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -695,7 +782,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 <Textarea
                                     ref={textareaRef}
                                     value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
+                                    onChange={useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value), [])}
                                     onKeyDown={handleKeyDown}
                                     placeholder="Ketik pesan Anda..."
                                     className="max-h-[120px] min-h-[60px] resize-none rounded-xl border-gray-200 bg-white shadow-sm transition-all duration-200 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
@@ -770,8 +857,6 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                         </div>
                     </div>
                 )}
-
-
 
                 {!canEdit && (
                     <div className="border-t bg-muted/50 p-4 text-center">

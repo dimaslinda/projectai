@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertTriangle, Check, Copy } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -17,10 +17,10 @@ interface CodeBlockProps {
     code: string;
 }
 
-const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
+const CodeBlock: React.FC<CodeBlockProps> = memo(({ language, code }) => {
     const [copied, setCopied] = useState(false);
 
-    const handleCopy = async () => {
+    const handleCopy = useCallback(async () => {
         try {
             // Try modern clipboard API first
             if (navigator.clipboard && window.isSecureContext) {
@@ -47,7 +47,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         }
-    };
+    }, [code]);
 
     return (
         <div className="group relative my-6">
@@ -101,17 +101,17 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
             </div>
         </div>
     );
-};
+});
 
-const MessageContent: React.FC<MessageContentProps> = ({ content, className = '' }) => {
+const MessageContent: React.FC<MessageContentProps> = memo(({ content, className = '' }) => {
     // Check if this is an error message
-    const isErrorMessage =
+    const isErrorMessage = React.useMemo(() => 
         content.includes('Maaf, saya tidak dapat') ||
         content.includes('Terjadi kesalahan') ||
         content.includes('Sorry, I cannot') ||
         content.includes('An error occurred') ||
         content.includes('tidak dapat memproses') ||
-        content.includes('cannot process');
+        content.includes('cannot process'), [content]);
 
     if (isErrorMessage) {
         return (
@@ -185,6 +185,6 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, className = ''
             </ReactMarkdown>
         </div>
     );
-};
+});
 
 export default MessageContent;

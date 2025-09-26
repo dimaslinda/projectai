@@ -239,6 +239,156 @@ class ChatController extends Controller
     }
 
     /**
+     * Create a new message with streaming AI response
+     */
+    public function createMessageStream(Request $request, ChatSession $session)
+    {
+        $user = auth()->user();
+
+        // Check if user can edit this session
+        if (!$this->canUserEditSession($session, $user)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'message' => 'required|string|max:10000',
+            'images.*' => 'image|mimes:jpeg,jpg,png,gif,webp|max:10240', // 10MB max per image
+        ]);
+
+        // Handle image uploads
+        $imageUrls = [];
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $image) {
+                $path = $image->store('chat-images', 'public');
+                $imageUrls[] = asset('storage/' . $path);
+            }
+        }
+
+        // Handle image URLs from request
+        if ($request->has('image_urls') && is_array($request->image_urls)) {
+            $imageUrls = array_merge($imageUrls, $request->image_urls);
+        }
+
+        // Prepare message content
+        $messageContent = $request->message ?? '';
+        $metadata = [
+            'images' => $imageUrls,
+            'has_images' => !empty($imageUrls),
+        ];
+
+        // Save user message
+        $userMessage = ChatHistory::create([
+            'user_id' => $user->id,
+            'chat_session_id' => $session->id,
+            'message' => $messageContent,
+            'sender' => 'user',
+            'metadata' => $metadata,
+        ]);
+
+        // Get chat history for context
+        $chatHistory = $session->chatHistories()
+            ->orderBy('created_at', 'asc')
+            ->get(['message', 'sender', 'metadata'])
+            ->toArray();
+
+        // Return streaming response
+        return response()->stream(function () use ($messageContent, $session, $chatHistory, $imageUrls, $user) {
+            // Set headers for SSE
+            echo "data: " . json_encode(['type' => 'start', 'message' => 'AI mulai mengetik...']) . "\n\n";
+            ob_flush();
+            flush();
+
+            try {
+                // Generate AI response with streaming
+                $fullResponse = '';
+                $aiResponse = $this->generateAIResponseStream(
+                    $messageContent,
+                    $session->persona,
+                    $chatHistory,
+                    $session->chat_type,
+                    $imageUrls,
+                    function ($chunk) use (&$fullResponse) {
+                        $fullResponse .= $chunk;
+                        echo "data: " . json_encode(['type' => 'chunk', 'content' => $chunk]) . "\n\n";
+                        ob_flush();
+                        flush();
+                        usleep(50000); // 50ms delay for typing effect
+                    }
+                );
+
+                // Check if response is empty or null
+                if (empty(trim($fullResponse))) {
+                    $fullResponse = $this->getErrorMessage('empty_response', $session->persona);
+                    echo "data: " . json_encode(['type' => 'chunk', 'content' => $fullResponse]) . "\n\n";
+                    ob_flush();
+                    flush();
+                }
+
+                // Save AI response
+                $aiMessage = ChatHistory::create([
+                    'user_id' => $user->id,
+                    'chat_session_id' => $session->id,
+                    'message' => $fullResponse,
+                    'sender' => 'ai',
+                    'metadata' => [
+                        'persona' => $session->persona,
+                        'chat_type' => $session->chat_type,
+                        'timestamp' => now()->toISOString(),
+                        'images' => $imageUrls,
+                        'is_error' => strpos($fullResponse, 'Maaf, saya mengalami kesulitan') === 0,
+                    ],
+                ]);
+
+                // Update session last activity
+                $session->updateLastActivity();
+
+                echo "data: " . json_encode(['type' => 'complete', 'message_id' => $aiMessage->id]) . "\n\n";
+                ob_flush();
+                flush();
+
+            } catch (\Exception $e) {
+                // Log the error
+                Log::error('AI Response Generation Failed', [
+                    'error' => $e->getMessage(),
+                    'user_id' => $user->id,
+                    'session_id' => $session->id,
+                    'persona' => $session->persona,
+                    'message_length' => strlen($messageContent),
+                    'has_images' => !empty($imageUrls)
+                ]);
+
+                // Send error message
+                $errorMessage = $this->getErrorMessage('generation_failed', $session->persona, $e->getMessage());
+                echo "data: " . json_encode(['type' => 'error', 'content' => $errorMessage]) . "\n\n";
+                ob_flush();
+                flush();
+
+                // Save error message
+                ChatHistory::create([
+                    'user_id' => $user->id,
+                    'chat_session_id' => $session->id,
+                    'message' => $errorMessage,
+                    'sender' => 'ai',
+                    'metadata' => [
+                        'persona' => $session->persona,
+                        'chat_type' => $session->chat_type,
+                        'timestamp' => now()->toISOString(),
+                        'images' => $imageUrls,
+                        'is_error' => true,
+                    ],
+                ]);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no', // Disable nginx buffering
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Headers' => 'Cache-Control',
+        ]);
+    }
+
+    /**
      * Toggle sharing status of a chat session
      */
     public function toggleSharing(ChatSession $session)
@@ -386,6 +536,43 @@ class ChatController extends Controller
         $aiService = new AIService();
         $response = $aiService->generateResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
 
+        return $response;
+    }
+
+    /**
+     * Generate AI response with streaming support
+     */
+    private function generateAIResponseStream(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = [], callable $callback = null): string
+    {
+        // Set unlimited execution time for AI processing
+        set_time_limit(0);
+
+        // Generate AI response using the original method
+        $response = $this->generateAIResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
+        
+        if ($callback && !empty($response)) {
+            // Split response into words for streaming effect
+            $words = explode(' ', $response);
+            $currentChunk = '';
+            
+            foreach ($words as $index => $word) {
+                $currentChunk .= $word;
+                
+                // Send chunk every 3-5 words or at sentence endings
+                if (($index + 1) % rand(3, 5) === 0 || 
+                    str_ends_with($word, '.') || 
+                    str_ends_with($word, '!') || 
+                    str_ends_with($word, '?') ||
+                    $index === count($words) - 1) {
+                    
+                    $callback($currentChunk . ' ');
+                    $currentChunk = '';
+                } else {
+                    $currentChunk .= ' ';
+                }
+            }
+        }
+        
         return $response;
     }
 
