@@ -17,17 +17,8 @@ class DatabaseSeeder extends Seeder
         // Call seeders in order
         $this->call([
             SuperadminSeeder::class,
-            UserSeeder::class,
+            UserExcelSeeder::class,
         ]);
-
-        // Create test user if not exists
-        User::firstOrCreate(
-            ['email' => 'test@example.com'],
-            [
-                'name' => 'Test User',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
+        // Test user dihilangkan sesuai instruksi
     }
 }
