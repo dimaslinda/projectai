@@ -240,7 +240,8 @@ export default function Landing() {
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="flex h-16 items-center justify-between">
                             <div className="flex items-center space-x-2">
-                                <img src="/asset/img/Horizontal.png" className="w-32" alt="Logo Gradient" />
+                                <img src="/asset/img/Horizontal Dark.png" className="w-32 block dark:hidden" alt="Logo Light" />
+                                <img src="/asset/img/Horizontal.png" className="w-32 hidden dark:block" alt="Logo Dark" />
                             </div>
                             <div className="flex items-center space-x-4">
                                 <Link href="/login" className="cursor-pointer">
