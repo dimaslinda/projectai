@@ -515,114 +515,114 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
             <div className="flex h-[calc(100vh-4rem)] flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-gray-200 bg-white/80 p-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/80">
-                    <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 bg-white/80 p-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/80">
+                    <div className="flex w-full items-center gap-3">
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => router.visit('/chat')}
                             className="rounded-xl transition-colors duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Kembali
+                            <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Kembali</span>
                         </Button>
-                        <div>
-                            <h1 className="bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-xl font-bold text-transparent dark:from-white dark:to-gray-300">
+                        <div className="min-w-0 flex-1">
+                            <h1 className="truncate bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-lg font-bold text-transparent dark:from-white dark:to-gray-300 sm:text-xl">
                                 {session.title}
                             </h1>
-                            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                    <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                                    <span>Oleh: {session.user.name}</span>
-                                </div>
-                                {session.persona && (
-                                    <Badge className={`${getRoleColor(session.persona)} shadow-sm`} variant="secondary">
-                                        {session.persona.toUpperCase()}
-                                    </Badge>
-                                )}
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Badge
-                                                variant="outline"
-                                                className={`cursor-help shadow-sm ${
-                                                    session.chat_type === 'global'
-                                                        ? 'border-accent-foreground/20 bg-accent text-accent-foreground'
-                                                        : 'border-primary/30 bg-primary/10 text-primary'
-                                                }`}
-                                            >
-                                                {session.chat_type === 'global' ? 'Global Chat' : 'Persona Chat'}
-                                            </Badge>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>
-                                                {session.chat_type === 'global'
-                                                    ? 'Chat umum dengan AI assistant'
-                                                    : `Chat dengan persona: ${session.persona}`}
-                                            </p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                                {session.is_shared && (
-                                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
-                                        <Share2 className="mr-1 h-3 w-3" />
-                                        Dibagikan
-                                    </Badge>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {canEdit && (
-                        <div className="flex items-center gap-2">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="sm" className="rounded-xl">
-                                        <MoreVertical className="mr-2 h-4 w-4" />
-                                        Aksi
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="min-w-[180px]">
-                                    <DropdownMenuItem onSelect={() => setShowNotificationSettings(true)}>
-                                        <Settings className="mr-2 h-4 w-4" />
-                                        Notifikasi
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={handleToggleSharing}>
-                                        <Share2 className="mr-2 h-4 w-4" />
-                                        {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive">
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Hapus
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-
-                            {/* Controlled AlertDialog for Delete */}
-                            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                                <AlertDialogContent className="rounded-2xl">
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle className="text-xl font-bold">Hapus Sesi Chat</AlertDialogTitle>
-                                        <AlertDialogDescription className="leading-relaxed text-muted-foreground">
-                                            Apakah Anda yakin ingin menghapus sesi chat ini? Tindakan ini tidak dapat dibatalkan dan semua riwayat
-                                            percakapan akan hilang.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="gap-3">
-                                        <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            onClick={handleDeleteSession}
-                                            className="rounded-xl bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground shadow-lg shadow-destructive/25 transition-all duration-200 hover:from-destructive/90 hover:to-destructive hover:shadow-destructive/40"
-                                        >
-                                            Hapus
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    )}
-                </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:text-sm">
+                                 <div className="flex items-center gap-1">
+                                     <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                     <span>Oleh: {session.user.name}</span>
+                                 </div>
+                                 {session.persona && (
+                                     <Badge className={`${getRoleColor(session.persona)} shadow-sm`} variant="secondary">
+                                         {session.persona.toUpperCase()}
+                                     </Badge>
+                                 )}
+                                 <TooltipProvider>
+                                     <Tooltip>
+                                         <TooltipTrigger asChild>
+                                             <Badge
+                                                 variant="outline"
+                                                 className={`cursor-help shadow-sm ${
+                                                     session.chat_type === 'global'
+                                                         ? 'border-accent-foreground/20 bg-accent text-accent-foreground'
+                                                         : 'border-primary/30 bg-primary/10 text-primary'
+                                                 }`}
+                                             >
+                                                 {session.chat_type === 'global' ? 'Global Chat' : 'Persona Chat'}
+                                             </Badge>
+                                         </TooltipTrigger>
+                                         <TooltipContent>
+                                             <p>
+                                                 {session.chat_type === 'global'
+                                                     ? 'Chat umum dengan AI assistant'
+                                                     : `Chat dengan persona: ${session.persona}`}
+                                             </p>
+                                         </TooltipContent>
+                                     </Tooltip>
+                                 </TooltipProvider>
+                                 {session.is_shared && (
+                                     <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
+                                         <Share2 className="mr-1 h-3 w-3" />
+                                         Dibagikan
+                                     </Badge>
+                                 )}
+                             </div>
+                         </div>
+                     </div>
+ 
+                     {canEdit && (
+                        <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+                             <DropdownMenu>
+                                 <DropdownMenuTrigger asChild>
+                                     <Button variant="outline" size="sm" className="rounded-xl">
+                                         <MoreVertical className="h-4 w-4 sm:mr-2" />
+                                         <span className="hidden sm:inline">Aksi</span>
+                                     </Button>
+                                 </DropdownMenuTrigger>
+                                 <DropdownMenuContent align="end" className="min-w-[180px]">
+                                     <DropdownMenuItem onSelect={() => setShowNotificationSettings(true)}>
+                                         <Settings className="mr-2 h-4 w-4" />
+                                         Notifikasi
+                                     </DropdownMenuItem>
+                                     <DropdownMenuItem onSelect={handleToggleSharing}>
+                                         <Share2 className="mr-2 h-4 w-4" />
+                                         {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
+                                     </DropdownMenuItem>
+                                     <DropdownMenuSeparator />
+                                     <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive">
+                                         <Trash2 className="mr-2 h-4 w-4" />
+                                         Hapus
+                                     </DropdownMenuItem>
+                                 </DropdownMenuContent>
+                             </DropdownMenu>
+ 
+                             {/* Controlled AlertDialog for Delete */}
+                             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                                 <AlertDialogContent className="rounded-2xl">
+                                     <AlertDialogHeader>
+                                         <AlertDialogTitle className="text-xl font-bold">Hapus Sesi Chat</AlertDialogTitle>
+                                         <AlertDialogDescription className="leading-relaxed text-muted-foreground">
+                                             Apakah Anda yakin ingin menghapus sesi chat ini? Tindakan ini tidak dapat dibatalkan dan semua riwayat
+                                             percakapan akan hilang.
+                                         </AlertDialogDescription>
+                                     </AlertDialogHeader>
+                                     <AlertDialogFooter className="gap-3">
+                                         <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
+                                         <AlertDialogAction
+                                             onClick={handleDeleteSession}
+                                             className="rounded-xl bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground shadow-lg shadow-destructive/25 transition-all duration-200 hover:from-destructive/90 hover:to-destructive hover:shadow-destructive/40"
+                                         >
+                                             Hapus
+                                         </AlertDialogAction>
+                                     </AlertDialogFooter>
+                                 </AlertDialogContent>
+                             </AlertDialog>
+                         </div>
+                     )}
+                 </div>
 
                 {/* Messages */}
                 <div
