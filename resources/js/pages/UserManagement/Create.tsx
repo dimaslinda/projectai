@@ -124,22 +124,15 @@ export default function Create() {
                                         User Role
                                     </Label>
                                     <Select value={data.role} onValueChange={(value) => setData('role', value)}>
-                                        <SelectTrigger className="border-gray-300 transition-all duration-200 focus:border-blue-500 focus:ring-blue-500/20 dark:border-sidebar-border dark:bg-sidebar-accent dark:text-sidebar-foreground dark:placeholder-white dark:focus:border-blue-400">
+                                        <SelectTrigger>
                                             <SelectValue placeholder="Select user role" />
                                         </SelectTrigger>
-                                        <SelectContent className="dark:border-sidebar-border dark:bg-sidebar-accent">
-                                            <SelectItem value="admin" className="dark:text-sidebar-foreground dark:focus:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-2 w-2 rounded-full bg-red-500"></div>
-                                                    Administrator
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="user" className="dark:text-sidebar-foreground dark:focus:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                                                    Regular User
-                                                </div>
-                                            </SelectItem>
+                                        <SelectContent>
+                                            <SelectItem value="engineer" className="hover:bg-gray-100 dark:hover:bg-sidebar">Engineer</SelectItem>
+                                            <SelectItem value="drafter" className="hover:bg-gray-100 dark:hover:bg-sidebar">Drafter</SelectItem>
+                                            <SelectItem value="esr" className="hover:bg-gray-100 dark:hover:bg-sidebar">ESR</SelectItem>
+                                            <SelectItem value="superadmin" className="hover:bg-gray-100 dark:hover:bg-sidebar">Superadmin</SelectItem>
+                                            <SelectItem value="user" className="hover:bg-gray-100 dark:hover:bg-sidebar">User (Umum)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     {errors.role && (

@@ -1,8 +1,7 @@
-# Panduan Integrasi AI - Gemini & OpenAI
+# Panduan Integrasi AI - Gemini
 
-Aplikasi ini mendukung integrasi dengan dua provider AI:
-- **Google Gemini** (Rekomendasi)
-- **OpenAI GPT**
+Aplikasi ini sekarang hanya mendukung integrasi dengan satu provider AI:
+- Google Gemini (Rekomendasi dan satu-satunya)
 
 ## Konfigurasi
 
@@ -16,81 +15,44 @@ Di file `.env`, atur provider default:
 AI_PROVIDER=gemini
 ```
 
-#### Konfigurasi Per Persona (Rekomendasi)
-Anda dapat mengatur provider yang berbeda untuk setiap persona:
+#### Konfigurasi Per Persona (Tetap Didukung)
+Anda dapat mengatur model Gemini yang berbeda untuk setiap persona:
 
 ```env
-# Provider khusus untuk setiap persona
-AI_PROVIDER_ENGINEER=openai    # Engineer menggunakan OpenAI
-AI_PROVIDER_DRAFTER=gemini     # Drafter menggunakan Gemini
-AI_PROVIDER_ESR=gemini         # ESR menggunakan Gemini
+# Provider khusus untuk setiap persona (semua menggunakan Gemini)
+AI_PROVIDER_ENGINEER=gemini
+AI_PROVIDER_DRAFTER=gemini
+AI_PROVIDER_ESR=gemini
 ```
-
-**Keunggulan Konfigurasi Per Persona:**
-- ✅ Fleksibilitas maksimal - setiap divisi bisa menggunakan AI yang berbeda
-- ✅ Optimasi cost - gunakan provider gratis untuk beberapa persona
-- ✅ Optimasi kualitas - gunakan provider premium untuk persona yang membutuhkan
-- ✅ Fallback otomatis ke provider global jika tidak dikonfigurasi
 
 ### 2. Konfigurasi Google Gemini (Rekomendasi)
 
 #### Mendapatkan API Key:
-1. Kunjungi [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. Kunjungi Google AI Studio (Makersuite) untuk membuat API Key
 2. Login dengan akun Google
 3. Klik "Create API Key"
 4. Salin API key yang dihasilkan
 
 #### Konfigurasi di .env:
 ```env
-# Jika semua persona menggunakan Gemini
+# Semua persona menggunakan Gemini
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_actual_gemini_api_key_here
 
-# Atau konfigurasi per persona
-AI_PROVIDER_ENGINEER=gemini
-AI_PROVIDER_DRAFTER=gemini
-AI_PROVIDER_ESR=gemini
-GEMINI_API_KEY=your_actual_gemini_api_key_here
+# Opsi: set model Gemini per persona
+GEMINI_MODEL_ENGINEER=gemini-2.5-pro
+GEMINI_MODEL_DRAFTER=gemini-2.5-pro
+GEMINI_MODEL_ESR=gemini-2.5-pro
 ```
 
 #### Keunggulan Gemini:
-- ✅ **Gratis** untuk penggunaan personal
-- ✅ Rate limit yang generous
-- ✅ Mendukung bahasa Indonesia dengan baik
-- ✅ Response time yang cepat
+- Gratis untuk penggunaan personal
+- Rate limit yang cukup longgar
+- Mendukung bahasa Indonesia dengan baik
+- Response time yang cepat
 
-### 3. Konfigurasi OpenAI (Alternatif)
-
-#### Mendapatkan API Key:
-1. Kunjungi [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Login atau daftar akun OpenAI
-3. Klik "Create new secret key"
-4. Salin API key yang dihasilkan
-
-#### Konfigurasi di .env:
-```env
-# Jika semua persona menggunakan OpenAI
-AI_PROVIDER=openai
-OPENAI_API_KEY=your_actual_openai_api_key_here
-OPENAI_MODEL=gpt-3.5-turbo
-
-# Atau konfigurasi per persona
-AI_PROVIDER_ENGINEER=openai
-AI_PROVIDER_DRAFTER=openai
-AI_PROVIDER_ESR=openai
-OPENAI_API_KEY=your_actual_openai_api_key_here
-OPENAI_MODEL=gpt-3.5-turbo
-```
-
-#### Model yang Tersedia:
-- `gpt-3.5-turbo` (Rekomendasi untuk cost-effective)
-- `gpt-4` (Lebih canggih tapi lebih mahal)
-- `gpt-4-turbo-preview` (Versi terbaru)
-
-#### Catatan OpenAI:
-- ⚠️ **Berbayar** - memerlukan credit di akun
-- ⚠️ Rate limit berdasarkan tier akun
-- ✅ Kualitas response yang sangat baik
+### 3. Konfigurasi OpenAI (Tidak lagi didukung)
+OpenAI tidak lagi didukung di aplikasi ini. Semua fungsionalitas AI telah disederhanakan untuk menggunakan Google Gemini saja.
 
 ## Mode Fallback
 
@@ -98,46 +60,39 @@ Jika API key tidak dikonfigurasi atau terjadi error, sistem akan otomatis menggu
 
 ### 4. Konfigurasi Model Dinamis per Persona
 
-Sistem mendukung konfigurasi model yang berbeda untuk setiap persona, memberikan kontrol granular atas kualitas dan biaya AI:
+Sistem mendukung konfigurasi model Gemini yang berbeda untuk setiap persona, memberikan kontrol granular atas kualitas dan biaya AI:
 
 ```env
 # Provider default (fallback)
 AI_PROVIDER=gemini
 
-# Konfigurasi provider per persona
-AI_PROVIDER_ENGINEER=openai    # Engineer menggunakan OpenAI
-AI_PROVIDER_DRAFTER=gemini     # Drafter menggunakan Gemini
-AI_PROVIDER_ESR=gemini         # ESR menggunakan Gemini
+# Konfigurasi provider per persona (tetap Gemini)
+AI_PROVIDER_ENGINEER=gemini
+AI_PROVIDER_DRAFTER=gemini
+AI_PROVIDER_ESR=gemini
 
-# API Keys untuk kedua provider
+# API Key untuk Gemini
 GEMINI_API_KEY=your_actual_gemini_api_key_here
-OPENAI_API_KEY=your_actual_openai_api_key_here
-OPENAI_MODEL=gpt-3.5-turbo
 
-# Model configuration per persona
-# OpenAI models: gpt-3.5-turbo, gpt-4, gpt-4-turbo-preview, gpt-4o (latest & best)
-OPENAI_MODEL_ENGINEER=gpt-4o           # Engineer menggunakan GPT-4o (terbaru & terbaik)
-OPENAI_MODEL_DRAFTER=gpt-4o            # Drafter menggunakan GPT-4o (terbaru & terbaik)
-OPENAI_MODEL_ESR=gpt-4o                # ESR menggunakan GPT-4o (terbaru & terbaik)
-
+# Model configuration per persona (Gemini)
 # Gemini models: gemini-1.5-flash, gemini-2.5-pro (latest & best)
-GEMINI_MODEL_ENGINEER=gemini-2.5-pro   # Engineer menggunakan Gemini 2.5 Pro (terbaru & terbaik)
-GEMINI_MODEL_DRAFTER=gemini-2.5-pro    # Drafter menggunakan Gemini 2.5 Pro (terbaru & terbaik)
-GEMINI_MODEL_ESR=gemini-2.5-pro        # ESR menggunakan Gemini 2.5 Pro (terbaru & terbaik)
+GEMINI_MODEL_ENGINEER=gemini-2.5-pro
+GEMINI_MODEL_DRAFTER=gemini-2.5-pro
+GEMINI_MODEL_ESR=gemini-2.5-pro
 ```
 
-**Keunggulan Menggunakan Model AI Terbaru & Terbaik:**
-- 🏆 **Kualitas Output Terbaik**: Model terbaru memberikan respons dengan akurasi dan relevansi tertinggi
-- 🧠 **Kemampuan Reasoning Canggih**: Gemini 2.5 Pro memiliki kemampuan thinking dan analisis yang superior
-- 📋 **Multimodal Support**: Mendukung berbagai jenis input (teks, gambar, audio, video, PDF)
-- 📄 **Context Window Besar**: Dapat memproses hingga 1M+ token untuk dokumen dan kode yang sangat panjang
-- 💻 **Advanced Coding**: Kemampuan coding dan debugging yang sangat canggih
-- 🔮 **Future-Ready**: Selalu menggunakan teknologi AI terdepan yang tersedia
+Keunggulan Menggunakan Model AI Terbaru & Terbaik:
+- Kualitas Output Terbaik
+- Kemampuan Reasoning Canggih
+- Multimodal Support (teks, gambar, audio, video, PDF)
+- Context Window Besar
+- Advanced Coding
+- Future-Ready
 
-**Contoh Skenario Penggunaan:**
-- **Engineer**: Menggunakan GPT-4o untuk analisis struktural kompleks dengan akurasi dan reasoning terdepan
-- **Drafter**: Menggunakan Gemini-2.5-Pro untuk pembuatan dokumentasi teknis dengan kualitas terbaik
-- **ESR**: Menggunakan model terbaru untuk laporan survei dengan presisi dan detail maksimal
+Contoh Skenario Penggunaan:
+- Engineer: Menggunakan Gemini 2.5 Pro untuk analisis struktural kompleks
+- Drafter: Menggunakan Gemini 2.5 Pro untuk pembuatan dokumentasi teknis
+- ESR: Menggunakan Gemini 2.5 Pro untuk laporan survei
 
 ## Testing
 
@@ -154,22 +109,19 @@ Setelah konfigurasi:
 
 ## Troubleshooting
 
-### Error: "API key tidak valid"
+Error: "API key tidak valid"
 - Pastikan API key sudah benar
 - Periksa apakah API key masih aktif
-- Untuk OpenAI, pastikan akun memiliki credit
 
-### Error: "Rate limit exceeded"
+Error: "Rate limit exceeded"
 - Tunggu beberapa menit sebelum mencoba lagi
-- Untuk OpenAI, upgrade tier akun jika diperlukan
 
-### Error: "Network timeout"
+Error: "Network timeout"
 - Periksa koneksi internet
-- Coba ganti provider AI
 
 ## Keamanan
 
-⚠️ **PENTING**: 
+PENTING:
 - Jangan commit file `.env` ke repository
 - Jangan share API key di public
 - Gunakan environment variables di production
@@ -178,8 +130,7 @@ Setelah konfigurasi:
 ## Monitoring
 
 Semua error AI akan dicatat di log Laravel. Monitor file:
-```
+
 storage/logs/laravel.log
-```
 
 Untuk production, pertimbangkan menggunakan monitoring service seperti Sentry atau Bugsnag.

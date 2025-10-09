@@ -14,22 +14,26 @@ class SuperadminSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create Super Admin User
-        User::create([
-            'name' => 'Super Admin',
-            'email' => 'superadmin@company.com',
-            'password' => Hash::make('password'),
-            'role' => 'superadmin',
-            'email_verified_at' => now(),
-        ]);
+        // Ensure Super Admin User exists with correct role
+        User::updateOrCreate(
+            ['email' => 'superadmin@company.com'],
+            [
+                'name' => 'Super Admin',
+                'password' => Hash::make('password'),
+                'role' => 'superadmin',
+                'email_verified_at' => now(),
+            ]
+        );
 
-        // Create additional admin user
-        User::create([
-            'name' => 'Admin User',
-            'email' => 'admin@company.com',
-            'password' => Hash::make('password'),
-            'role' => 'admin',
-            'email_verified_at' => now(),
-        ]);
+        // Ensure Admin User exists with correct role
+        User::updateOrCreate(
+            ['email' => 'admin@company.com'],
+            [
+                'name' => 'Admin User',
+                'password' => Hash::make('password'),
+                'role' => 'admin',
+                'email_verified_at' => now(),
+            ]
+        );
     }
 }

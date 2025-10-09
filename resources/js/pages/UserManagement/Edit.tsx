@@ -135,36 +135,15 @@ export default function Edit({ user }: Props) {
                                         User Role
                                     </Label>
                                     <Select value={data.role} onValueChange={(value) => setData('role', value)}>
-                                        <SelectTrigger
-                                            className={`transition-all duration-200 ${errors.role ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500 dark:border-sidebar-border dark:focus:border-blue-400'} bg-white text-gray-900 dark:bg-sidebar-accent dark:text-sidebar-foreground`}
-                                        >
-                                            <SelectValue placeholder="Choose user role" />
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select user role" />
                                         </SelectTrigger>
-                                        <SelectContent className="border-gray-200 bg-white dark:border-sidebar-border dark:bg-sidebar-accent">
-                                            <SelectItem value="engineer" className="hover:bg-gray-100 dark:hover:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                                                    Engineer
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="drafter" className="hover:bg-gray-100 dark:hover:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                                                    Drafter
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="esr" className="hover:bg-gray-100 dark:hover:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="h-2 w-2 rounded-full bg-yellow-500"></span>
-                                                    ESR
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="superadmin" className="hover:bg-gray-100 dark:hover:bg-sidebar">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="h-2 w-2 rounded-full bg-red-500"></span>
-                                                    Superadmin
-                                                </div>
-                                            </SelectItem>
+                                        <SelectContent>
+                                            <SelectItem value="engineer" className="hover:bg-gray-100 dark:hover:bg-sidebar">Engineer</SelectItem>
+                                            <SelectItem value="drafter" className="hover:bg-gray-100 dark:hover:bg-sidebar">Drafter</SelectItem>
+                                            <SelectItem value="esr" className="hover:bg-gray-100 dark:hover:bg-sidebar">ESR</SelectItem>
+                                            <SelectItem value="superadmin" className="hover:bg-gray-100 dark:hover:bg-sidebar">Superadmin</SelectItem>
+                                            <SelectItem value="user" className="hover:bg-gray-100 dark:hover:bg-sidebar">User (Umum)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     {errors.role && (

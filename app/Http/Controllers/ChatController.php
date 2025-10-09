@@ -66,6 +66,11 @@ class ChatController extends Controller
             'type' => 'required|in:global,persona',
         ]);
 
+        // Tambahan pembatasan: role "user" hanya boleh membuat chat global
+        if ($request->type === 'persona' && $user->role === 'user') {
+            return back()->withErrors(['type' => 'Role pengguna umum hanya diperbolehkan membuat chat global.']);
+        }
+
         // Determine persona based on chat type and user role
         $persona = null;
         if ($request->type === 'persona') {

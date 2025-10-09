@@ -29,13 +29,16 @@ const ChatTypeSelector: React.FC<ChatTypeSelectorProps> = ({ onSelect, onCancel,
     // Get user's persona info for display
     const userPersona = userRole ? PERSONA_OPTIONS.find((p) => p.id === userRole) : null;
 
+    // Filter available chat types: hide persona option for general 'user' role
+    const availableChatTypes = userRole === 'user' ? CHAT_SESSION_TYPES.filter((t) => t.id === 'global') : CHAT_SESSION_TYPES;
+
     return (
         <div className="space-y-6">
             {/* Step 1: Choose Chat Type */}
             <div>
                 <h3 className="mb-4 text-lg font-semibold">Pilih Jenis Chat Session</h3>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {CHAT_SESSION_TYPES.map((type) => (
+                    {availableChatTypes.map((type) => (
                         <Card
                             key={type.id}
                             className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
@@ -59,6 +62,9 @@ const ChatTypeSelector: React.FC<ChatTypeSelectorProps> = ({ onSelect, onCancel,
                         </Card>
                     ))}
                 </div>
+                {userRole === 'user' && (
+                    <p className="mt-2 text-sm text-muted-foreground">Pengguna umum hanya dapat membuat chat global.</p>
+                )}
             </div>
 
             {/* Step 2: Show User's Persona (if persona type selected) */}

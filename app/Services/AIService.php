@@ -9,15 +9,11 @@ class AIService
 {
     private string $provider;
     private string $geminiApiKey;
-    private string $openaiApiKey;
-    private string $openaiModel;
 
     public function __construct()
     {
         $this->provider = config('ai.provider', 'gemini');
         $this->geminiApiKey = config('ai.gemini_api_key');
-        $this->openaiApiKey = config('ai.openai_api_key');
-        $this->openaiModel = config('ai.openai_model', 'gpt-3.5-turbo');
     }
 
     public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
@@ -28,15 +24,7 @@ class AIService
                 return $this->generatePersonaRejectionResponse($persona);
             }
 
-            // Get persona-specific provider or fallback to default
-            $personaProviders = config('ai.persona_providers', []);
-            $selectedProvider = $persona ? ($personaProviders[$persona] ?? $this->provider) : $this->provider;
-
-            return match ($selectedProvider) {
-                'gemini' => $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType, $imageUrls),
-                'openai' => $this->generateOpenAIResponse($message, $persona, $chatHistory, $chatType, $imageUrls),
-                default => $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls)
-            };
+            return $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
         } catch (\Exception $e) {
             Log::error('AI Service Error: ' . $e->getMessage());
             return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
@@ -187,43 +175,6 @@ class AIService
         throw new \Exception("Gemini API request failed (HTTP {$response->status()}): {$errorMessage}");
     }
 
-    private function generateOpenAIResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
-    {
-        if (empty($this->openaiApiKey) || $this->openaiApiKey === 'your_openai_api_key_here') {
-            return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
-        }
-
-        // Get persona-specific OpenAI model - use vision model if images are present
-        $openaiModels = config('ai.openai_models', []);
-        $selectedModel = $persona ? ($openaiModels[$persona] ?? $this->openaiModel) : $this->openaiModel;
-
-        // Use vision model if images are provided
-        if (!empty($imageUrls)) {
-            $selectedModel = 'gpt-4-vision-preview';
-        }
-
-        $systemPrompt = $this->getPersonaPrompt($persona, $chatType);
-        $messages = $this->buildOpenAIMessages($systemPrompt, $chatHistory, $message, $imageUrls);
-
-        $response = Http::timeout(120)
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->openaiApiKey,
-                'Content-Type' => 'application/json',
-            ])
-            ->post('https://api.openai.com/v1/chat/completions', [
-                'model' => $selectedModel,
-                'messages' => $messages,
-                'temperature' => 0.7,
-                'max_tokens' => 8192,
-            ]);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            return $data['choices'][0]['message']['content'] ?? $this->generateFallbackResponse($message, $persona, $chatType);
-        }
-
-        throw new \Exception('OpenAI API request failed: ' . $response->body());
-    }
 
     private function getPersonaPrompt(?string $persona, string $chatType = 'persona'): string
     {
@@ -442,7 +393,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                 'engineer' => 'Sebagai Insinyur Sipil yang mengkhususkan diri dalam desain dan analisis struktural, saya dapat membantu Anda dengan perhitungan, spesifikasi material, kode bangunan, dan penilaian struktural.',
                 'drafter' => 'Sebagai Drafter Teknis, saya dapat membantu Anda dengan gambar CAD, spesifikasi teknis, pembuatan blueprint, dan dokumentasi desain.',
                 'esr' => 'Sebagai spesialis Tower Survey, saya dapat membantu Anda dengan analisis gambar survey tower telekomunikasi, identifikasi orientasi tower, dan evaluasi kondisi struktur.',
-
+            
                 // Business divisions
                 'hr' => 'Sebagai spesialis Human Resources, saya dapat membantu Anda dengan manajemen SDM, rekrutmen, pengembangan karyawan, dan kebijakan perusahaan.',
                 'finance' => 'Sebagai spesialis Keuangan, saya dapat membantu Anda dengan analisis keuangan, budgeting, perencanaan keuangan, dan manajemen risiko.',
@@ -457,16 +408,10 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
 
         // Get configured provider and model for this persona
         $personaProviders = config('ai.persona_providers', []);
-        $configuredProvider = $persona ? ($personaProviders[$persona] ?? $this->provider) : $this->provider;
+        $configuredProvider = 'gemini';
 
-        $configuredModel = 'default';
-        if ($configuredProvider === 'openai') {
-            $openaiModels = config('ai.openai_models', []);
-            $configuredModel = $persona ? ($openaiModels[$persona] ?? 'gpt-4o') : 'gpt-4o';
-        } elseif ($configuredProvider === 'gemini') {
-            $geminiModels = config('ai.gemini_models', []);
-            $configuredModel = $persona ? ($geminiModels[$persona] ?? 'gemini-1.5-pro') : 'gemini-1.5-pro';
-        }
+        $geminiModels = config('ai.gemini_models', []);
+        $configuredModel = $persona ? ($geminiModels[$persona] ?? 'gemini-1.5-pro') : 'gemini-1.5-pro';
 
         $imageNote = !empty($imageUrls) ? ' (termasuk analisis gambar)' : '';
         $personaDisplay = $persona ?? 'global';
@@ -512,60 +457,6 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         return $context;
     }
 
-    /**
-     * Build messages array for OpenAI API with chat history
-     */
-    private function buildOpenAIMessages(string $systemPrompt, array $chatHistory, string $currentMessage, array $imageUrls = []): array
-    {
-        $messages = [
-            [
-                'role' => 'system',
-                'content' => $systemPrompt
-            ]
-        ];
-
-        // Add chat history (limit to last 10 messages to avoid token limits)
-        $recentHistory = array_slice($chatHistory, -10);
-
-        foreach ($recentHistory as $chat) {
-            // Handle both array and object structures
-            $sender = is_array($chat) ? ($chat['sender'] ?? 'unknown') : ($chat->sender ?? 'unknown');
-            $message = is_array($chat) ? ($chat['message'] ?? '') : ($chat->message ?? '');
-            
-            $messages[] = [
-                'role' => $sender === 'user' ? 'user' : 'assistant',
-                'content' => $message
-            ];
-        }
-
-        // Add current message with images if provided
-        $currentMessageContent = [];
-
-        // Add text content
-        $currentMessageContent[] = [
-            'type' => 'text',
-            'text' => $currentMessage
-        ];
-
-        // Add images if provided
-        if (!empty($imageUrls)) {
-            foreach ($imageUrls as $imageUrl) {
-                $currentMessageContent[] = [
-                    'type' => 'image_url',
-                    'image_url' => [
-                        'url' => $imageUrl
-                    ]
-                ];
-            }
-        }
-
-        $messages[] = [
-            'role' => 'user',
-            'content' => !empty($imageUrls) ? $currentMessageContent : $currentMessage
-        ];
-
-        return $messages;
-    }
 
 
 

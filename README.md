@@ -6,12 +6,12 @@
 ![Inertia.js](https://img.shields.io/badge/Inertia.js-2.x-purple.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.x-teal.svg)
 
-ProjectAI adalah aplikasi chat cerdas yang mengintegrasikan AI (Google Gemini & OpenAI) dengan sistem persona untuk berbagai divisi dan kebutuhan bisnis. Aplikasi ini dibangun dengan Laravel sebagai backend dan React dengan TypeScript sebagai frontend, menggunakan Inertia.js untuk seamless SPA experience.
+ProjectAI adalah aplikasi chat cerdas yang mengintegrasikan AI (Google Gemini) dengan sistem persona untuk berbagai divisi dan kebutuhan bisnis. Aplikasi ini dibangun dengan Laravel sebagai backend dan React dengan TypeScript sebagai frontend, menggunakan Inertia.js untuk seamless SPA experience.
 
 ## ✨ Fitur Utama
 
 ### 🤖 AI Chat System
-- **Multi-Provider AI**: Dukungan Google Gemini dan OpenAI GPT
+- **Single AI Provider**: Seluruh sistem menggunakan Google Gemini
 - **Persona-Based Chat**: AI yang disesuaikan dengan role dan divisi tertentu
 - **Global AI Assistant**: AI umum untuk berbagai topik
 - **Chat History**: Riwayat percakapan dengan context awareness
@@ -59,8 +59,7 @@ ProjectAI adalah aplikasi chat cerdas yang mengintegrasikan AI (Google Gemini & 
 - **Vite 7.x** - Build Tool
 
 ### AI Integration
-- **Google Gemini API** - Primary AI Provider
-- **OpenAI API** - Alternative AI Provider
+- **Google Gemini API** - Satu-satunya AI Provider
 - **Custom AI Service** - Abstraction layer
 
 ## 📋 Prerequisites
@@ -124,18 +123,13 @@ php artisan db:seed
 
 ### 6. AI Configuration
 
-Lihat **[AI Integration Guide](AI_INTEGRATION_GUIDE.md)** untuk konfigurasi lengkap AI providers.
+Lihat **[AI Integration Guide](AI_INTEGRATION_GUIDE.md)** untuk konfigurasi lengkap AI dengan Gemini.
 
 **Quick Setup:**
 ```bash
 # Tambahkan ke .env
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
-
-# Atau gunakan OpenAI
-AI_PROVIDER=openai
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o
 ```
 
 ### 7. Build Assets
@@ -163,7 +157,7 @@ Aplikasi akan tersedia di `http://localhost:8000`
 ## 📚 Documentation
 
 ### 📖 Panduan Lengkap
-- **[AI Integration Guide](AI_INTEGRATION_GUIDE.md)** - Panduan lengkap integrasi AI
+- **[AI Integration Guide](AI_INTEGRATION_GUIDE.md)** - Panduan lengkap integrasi AI (Gemini)
 - **[API Documentation](#)** - REST API endpoints (coming soon)
 - **[Deployment Guide](#)** - Production deployment (coming soon)
 
@@ -333,7 +327,6 @@ Jika Anda mengalami masalah atau memiliki pertanyaan:
 - **TailwindCSS** - Utility-first CSS framework
 - **Radix UI** - Accessible component primitives
 - **Google Gemini** - Advanced AI capabilities
-- **OpenAI** - Cutting-edge language models
 
 ---
 

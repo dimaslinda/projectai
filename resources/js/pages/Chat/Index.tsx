@@ -36,6 +36,16 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
     });
 
     const handleChatTypeSelect = (chatType: 'global' | 'persona') => {
+        // Prevent selecting persona when userRole is 'user'
+        if (userRole === 'user' && chatType === 'persona') {
+            // Ignore selection or force global
+            setSelectedChatType('global');
+            setData('type', 'global');
+            setData('persona', null);
+            setData('title', 'Chat Global');
+            return;
+        }
+
         setSelectedChatType(chatType);
         setData('type', chatType);
         setData('persona', chatType === 'persona' ? userRole : null);
