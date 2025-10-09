@@ -656,29 +656,19 @@ class ChatController extends Controller
         $sessionUserId = $session->user_id;
         $currentUserId = $user->id;
         
-        // Primary check: Strict comparison (preferred)
+        // Only the actual owner can edit/send messages
+        // Use type-safe comparisons to handle production data type issues
         if ($sessionUserId === $currentUserId) {
             return true;
         }
-        
-        // Fallback 1: Type-cast both to integers and compare
-        // This handles cases where one might be string and other integer
         if ((int)$sessionUserId === (int)$currentUserId) {
             return true;
         }
-        
-        // Fallback 2: Loose comparison (last resort)
-        // This handles edge cases with type coercion
         if ($sessionUserId == $currentUserId) {
             return true;
         }
         
-        // Check if user can access shared session based on their role
-        if ($session->canBeViewedByRole($user->role)) {
-            return true;
-        }
-        
-        // No match found
+        // Shared access is view-only; non-owners cannot edit
         return false;
     }
 
