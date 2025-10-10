@@ -2,6 +2,7 @@ import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
+import mkcert from 'vite-plugin-mkcert';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -16,12 +17,21 @@ export default defineConfig({
         wayfinder({
             formVariants: true,
         }),
+        mkcert({
+            hosts: ['projectai.test', 'localhost'],
+        }),
     ],
     server: {
-        host: '0.0.0.0',
+        host: 'projectai.test',
         port: 5173,
         cors: true,
         strictPort: false,
+        hmr: {
+            host: 'projectai.test',
+            protocol: 'wss',
+            port: 5173,
+        },
+        origin: 'https://projectai.test:5173',
     },
     esbuild: {
         jsx: 'automatic',

@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Application version metadata sourced from .env
+    'version' => env('APP_VERSION', 'v0.1.0'),
+    'release_date' => env('APP_RELEASE_DATE', date('Y-m-d')),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

@@ -89,8 +89,8 @@ class ChatController extends Controller
             'chat_type' => $request->type,
             'persona' => $persona,
             'description' => $request->description,
-            'is_shared' => true, // Enable sharing by default
-            'shared_with_roles' => [$user->role], // Share with user's role
+            'is_shared' => false, // Do not share by default
+            'shared_with_roles' => null, // No shared roles by default
             'last_activity_at' => now(),
         ]);
 

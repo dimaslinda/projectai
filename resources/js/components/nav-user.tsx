@@ -8,9 +8,11 @@ import { usePage } from '@inertiajs/react';
 import { ChevronsUpDown } from 'lucide-react';
 
 export function NavUser() {
-    const { auth } = usePage<SharedData>().props;
+    const { auth, app } = usePage<SharedData>().props;
     const { state } = useSidebar();
     const isMobile = useIsMobile();
+
+    const appVersion = `${app.version} • ${app.releaseDate}`;
 
     return (
         <SidebarMenu>
@@ -30,6 +32,12 @@ export function NavUser() {
                         <UserMenuContent user={auth.user} />
                     </DropdownMenuContent>
                 </DropdownMenu>
+            </SidebarMenuItem>
+            {/* Version label under username in sidebar footer */}
+            <SidebarMenuItem>
+                <div className="px-2 py-1 text-xs text-muted-foreground leading-snug group-data-[collapsible=icon]:hidden">
+                    <span className="font-medium">{appVersion}</span>
+                </div>
             </SidebarMenuItem>
         </SidebarMenu>
     );
