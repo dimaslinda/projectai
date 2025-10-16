@@ -56,15 +56,15 @@ export default function Show({ changelog }: Props) {
     const getTypeBadgeColor = (type: string) => {
         switch (type) {
             case 'major':
-                return 'bg-red-100 text-red-800';
+                return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300';
             case 'minor':
-                return 'bg-blue-100 text-blue-800';
+                return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300';
             case 'patch':
-                return 'bg-green-100 text-green-800';
+                return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300';
             case 'hotfix':
-                return 'bg-yellow-100 text-yellow-800';
+                return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300';
             default:
-                return 'bg-gray-100 text-gray-800';
+                return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
         }
     };
 
@@ -129,12 +129,12 @@ export default function Show({ changelog }: Props) {
                                     <div className="flex items-center space-x-3">
                                         <Badge className={getTypeBadgeColor(changelog.type)}>{changelog.type.toUpperCase()}</Badge>
                                         {!changelog.is_published && (
-                                            <Badge variant="outline" className="text-orange-600">
+                                            <Badge variant="outline" className="text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800">
                                                 Draft
                                             </Badge>
                                         )}
                                         {changelog.is_published && (
-                                            <Badge variant="outline" className="text-green-600">
+                                            <Badge variant="outline" className="text-green-600 dark:text-green-400 border-green-200 dark:border-green-800">
                                                 Published
                                             </Badge>
                                         )}
@@ -179,12 +179,12 @@ export default function Show({ changelog }: Props) {
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="rounded-lg bg-blue-50 p-4">
+                                    <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
                                         <ul className="space-y-3">
                                             {changelog.technical_notes.map((note, index) => (
                                                 <li key={index} className="flex items-start space-x-3">
-                                                    <Circle className="mt-1 h-4 w-4 flex-shrink-0 text-blue-600" />
-                                                    <span className="text-sm leading-relaxed text-blue-900">{note}</span>
+                                                    <Circle className="mt-1 h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                                                    <span className="text-sm leading-relaxed text-blue-900 dark:text-blue-200">{note}</span>
                                                 </li>
                                             ))}
                                         </ul>
@@ -258,7 +258,7 @@ export default function Show({ changelog }: Props) {
                                     <Circle className="h-4 w-4 text-muted-foreground" />
                                     <div>
                                         <p className="text-sm font-medium">Status</p>
-                                        <Badge variant="outline" className={changelog.is_published ? 'text-green-600' : 'text-orange-600'}>
+                                        <Badge variant="outline" className={changelog.is_published ? 'text-green-600 dark:text-green-400 border-green-200 dark:border-green-800' : 'text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800'}>
                                             {changelog.is_published ? 'Published' : 'Draft'}
                                         </Badge>
                                     </div>
@@ -317,11 +317,11 @@ export default function Show({ changelog }: Props) {
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="text-center">
-                                        <p className="text-2xl font-bold text-blue-600">{changelog.changes?.length || 0}</p>
+                                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{changelog.changes?.length || 0}</p>
                                         <p className="text-sm text-muted-foreground">Changes</p>
                                     </div>
                                     <div className="text-center">
-                                        <p className="text-2xl font-bold text-green-600">{changelog.technical_notes?.length || 0}</p>
+                                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{changelog.technical_notes?.length || 0}</p>
                                         <p className="text-sm text-muted-foreground">Tech Notes</p>
                                     </div>
                                 </div>
