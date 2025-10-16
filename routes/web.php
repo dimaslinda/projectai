@@ -53,6 +53,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // User management routes (superadmin only)
     Route::resource('users', App\Http\Controllers\UserController::class);
     
+    // Changelog management routes (superadmin only)
+    Route::prefix('admin')->name('admin.')->middleware('superadmin')->group(function () {
+        Route::resource('changelog', App\Http\Controllers\ChangelogController::class);
+        Route::patch('changelog/{changelog}/toggle-published', [App\Http\Controllers\ChangelogController::class, 'togglePublished'])->name('changelog.toggle-published');
+    });
+    
     // Migrate refresh route (superadmin only)
     Route::post('/migrate-refresh', [App\Http\Controllers\UserController::class, 'migrateRefresh'])->name('migrate.refresh');
 });

@@ -4,7 +4,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, Sid
 import { dashboard } from '@/routes';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutGrid, MessageSquare, Users, FileSpreadsheet } from 'lucide-react';
+import { LayoutGrid, MessageSquare, Users, FileSpreadsheet, FileText } from 'lucide-react';
 import AppLogo from './app-logo';
 
 export function AppSidebar() {
@@ -37,6 +37,11 @@ export function AppSidebar() {
                       title: 'User Management',
                       href: '/users',
                       icon: Users,
+                  },
+                  {
+                      title: 'Changelog',
+                      href: '/admin/changelog',
+                      icon: FileText,
                   },
               ]
             : []),

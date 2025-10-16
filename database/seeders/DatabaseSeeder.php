@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             SuperadminSeeder::class,
             UserExcelSeeder::class,
+            ChangelogCurrentUpdateSeeder::class,
         ]);
         // Test user dihilangkan sesuai instruksi
     }

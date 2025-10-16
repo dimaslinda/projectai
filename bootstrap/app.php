@@ -4,6 +4,7 @@ use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HandleLargeUploads;
+use App\Http\Middleware\SuperadminMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,6 +16,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
+    ->withSchedule(function ($schedule) {
+        // Run chat history cleanup monthly on the 1st day at 2:00 AM
+        $schedule->command('chat:cleanup-old-history')
+            ->monthly()
+            ->at('02:00')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/chat-cleanup.log'));
+    })
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
@@ -27,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => CheckRole::class,
             'large-uploads' => HandleLargeUploads::class,
+            'superadmin' => SuperadminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

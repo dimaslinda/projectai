@@ -15,6 +15,14 @@ class SuperadminMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if (!auth()->check()) {
+            return redirect()->route('login');
+        }
+
+        if (auth()->user()->role !== 'superadmin') {
+            abort(403, 'Access denied. Superadmin role required.');
+        }
+
         return $next($request);
     }
 }
