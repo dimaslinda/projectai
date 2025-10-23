@@ -1,58 +1,36 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
-
-// Load Laravel environment
-$app = require_once 'bootstrap/app.php';
-$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
-
 use App\Services\AIService;
-use Illuminate\Support\Facades\Log;
 
-// Test messages
-$editingMessages = [
-    "edit this photo",
-    "ubah warna background foto ini",
-    "hapus objek di gambar",
-    "crop gambar ini",
-    "buat foto ini jadi hitam putih"
-];
-
-$nonEditingMessages = [
-    "apa itu AI?",
-    "buatkan gambar kucing",
-    "generate image of a sunset",
-    "jelaskan tentang machine learning"
-];
-
-echo "Testing Image Editing Detection\n";
-echo "===============================\n\n";
-
-try {
-    // Create AIService instance
+it('can detect image editing prompts correctly', function () {
     $aiService = new AIService();
-
-    echo "1. Testing Image Editing Prompts:\n";
-    echo "--------------------------------\n";
+    
+    $editingMessages = [
+        "edit this photo",
+        "ubah warna background foto ini",
+        "hapus objek di gambar",
+        "crop gambar ini",
+        "buat foto ini jadi hitam putih"
+    ];
     
     foreach ($editingMessages as $message) {
         $isEditingPrompt = $aiService->isImageEditingPrompt($message);
-        $status = $isEditingPrompt ? "✅ DETECTED" : "❌ NOT DETECTED";
-        echo "   \"$message\" -> $status\n";
+        expect($isEditingPrompt)->toBeTrue("Message '$message' should be detected as image editing prompt");
     }
+});
 
-    echo "\n2. Testing Non-Editing Prompts:\n";
-    echo "-------------------------------\n";
+it('can correctly ignore non-editing prompts', function () {
+    $aiService = new AIService();
+    
+    $nonEditingMessages = [
+        "apa itu AI?",
+        "buatkan gambar kucing",
+        "generate image of a sunset",
+        "jelaskan tentang machine learning"
+    ];
     
     foreach ($nonEditingMessages as $message) {
         $isEditingPrompt = $aiService->isImageEditingPrompt($message);
-        $status = $isEditingPrompt ? "❌ FALSE POSITIVE" : "✅ CORRECTLY IGNORED";
-        echo "   \"$message\" -> $status\n";
+        expect($isEditingPrompt)->toBeFalse("Message '$message' should not be detected as image editing prompt");
     }
-
-    echo "\n✅ Image Editing Detection Test Completed Successfully!\n";
-
-} catch (Exception $e) {
-    echo "❌ Error during testing: " . $e->getMessage() . "\n";
-    echo "Stack trace: " . $e->getTraceAsString() . "\n";
-}
+});

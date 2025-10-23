@@ -1,44 +1,51 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
-
 use App\Services\AIService;
-use Illuminate\Support\Facades\Log;
 
-// Bootstrap Laravel
-$app = require_once __DIR__ . '/../../bootstrap/app.php';
-$app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
+it('can detect image generation prompts correctly', function () {
+    $aiService = new AIService();
+    
+    $imagePrompts = [
+        "Generate image of a house",
+        "Create picture of a cat", 
+        "Make image of a car",
+        "Buat gambar apel merah",
+        "Buatkan gambar struktur bangunan",
+        "Draw a cat",
+        "Design a logo",
+        "Gambarkan sebuah mobil",
+        "Visualisasi struktur jembatan",
+        "Show me a picture"
+    ];
+    
+    foreach ($imagePrompts as $prompt) {
+        // Use reflection to access private method
+        $reflection = new ReflectionClass($aiService);
+        $method = $reflection->getMethod('isTextToImagePrompt');
+        $method->setAccessible(true);
+        
+        $isImageRequest = $method->invoke($aiService, $prompt);
+        expect($isImageRequest)->toBeTrue("Failed to detect image request: {$prompt}");
+    }
+});
 
-echo "=== Testing Image Detection Patterns ===\n\n";
-
-// Test prompts
-$testPrompts = [
-    "Create a simple drawing of a red apple",
-    "Generate a structural diagram of a simple beam with supports",
-    "Buat gambar apel merah",
-    "Buatkan gambar struktur bangunan",
-    "Generate image of a house",
-    "Draw a cat",
-    "Show me a picture of a car",
-    "Gambarkan sebuah mobil",
-    "Visualisasi struktur jembatan",
-    "Design a logo",
-    "Hello, how are you?",
-    "What is the weather today?"
-];
-
-// Initialize AIService
-$aiService = new AIService();
-
-// Use reflection to access private method
-$reflection = new ReflectionClass($aiService);
-$method = $reflection->getMethod('isTextToImagePrompt');
-$method->setAccessible(true);
-
-foreach ($testPrompts as $prompt) {
-    echo "Testing: \"$prompt\"\n";
-    $isImagePrompt = $method->invoke($aiService, $prompt);
-    echo "Result: " . ($isImagePrompt ? "✓ IMAGE DETECTED" : "✗ Not image") . "\n\n";
-}
-
-echo "=== Test Complete ===\n";
+it('can detect non-image prompts correctly', function () {
+    $aiService = new AIService();
+    
+    $textPrompts = [
+        "Hello, how are you?",
+        "What is the weather today?",
+        "Explain quantum physics",
+        "Tell me a joke"
+    ];
+    
+    foreach ($textPrompts as $prompt) {
+        // Use reflection to access private method
+        $reflection = new ReflectionClass($aiService);
+        $method = $reflection->getMethod('isTextToImagePrompt');
+        $method->setAccessible(true);
+        
+        $isImageRequest = $method->invoke($aiService, $prompt);
+        expect($isImageRequest)->toBeFalse("Incorrectly detected as image request: {$prompt}");
+    }
+});

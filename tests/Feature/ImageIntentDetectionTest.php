@@ -1,104 +1,62 @@
 <?php
 
-require_once __DIR__ . '/../../vendor/autoload.php';
-
-use Illuminate\Foundation\Application;
-use Illuminate\Foundation\Configuration\Exceptions;
-use Illuminate\Foundation\Configuration\Middleware;
 use App\Services\AIService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 
-// Bootstrap Laravel
-$app = Application::configure(basePath: __DIR__)
-    ->withRouting(
-        web: __DIR__ . '/routes/web.php',
-        commands: __DIR__ . '/routes/console.php',
-        health: '/up',
-    )
-    ->withMiddleware(function (Middleware $middleware) {
-        //
-    })
-    ->withExceptions(function (Exceptions $exceptions) {
-        //
-    })->create();
+uses(RefreshDatabase::class);
 
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
+describe('Image Intent Detection', function () {
+    beforeEach(function () {
+        $this->aiService = new AIService();
+    });
 
-echo "=== Testing Image Intent Detection ===\n\n";
+    it('can detect image generation prompts correctly', function () {
+        $testMessages = [
+            ["buatkan gambar kucing sedang balapan", true],
+            ["saya ingin melihat gambar gajah melompat", true],
+            ["Tentu, ini dia gambar kucing sedang balapan untuk Anda!", false],
+            ["buatkan gambar kucing lucu", true],
+            ["generate image of a cat", true],
+            ["create a picture of a dog", true],
+            ["show me a visual of mountains", true],
+            ["hello, how are you?", false],
+            ["what is the weather today?", false]
+        ];
 
-$aiService = new AIService();
+        foreach ($testMessages as [$message, $expected]) {
+            // Use reflection to access private method
+            $reflection = new ReflectionClass($this->aiService);
+            $method = $reflection->getMethod('isTextToImagePrompt');
+            $method->setAccessible(true);
 
-// Test messages that should trigger image generation
-$testMessages = [
-    "buatkan gambar kucing sedang balapan",
-    "saya ingin melihat gambar gajah melompat",
-    "Tentu, ini dia gambar kucing sedang balapan untuk Anda!",
-    "buatkan gambar kucing lucu",
-    "generate image of a cat",
-    "create a picture of a dog",
-    "show me a visual of mountains",
-    "hello, how are you?", // This should NOT trigger image generation
-    "what is the weather today?" // This should NOT trigger image generation
-];
+            $isImagePrompt = $method->invoke($this->aiService, $message);
 
-foreach ($testMessages as $message) {
-    echo "Testing message: \"$message\"\n";
-
-    // Use reflection to access private method
-    $reflection = new ReflectionClass($aiService);
-    $method = $reflection->getMethod('isTextToImagePrompt');
-    $method->setAccessible(true);
-
-    $isImagePrompt = $method->invoke($aiService, $message);
-
-    echo "Result: " . ($isImagePrompt ? "✅ IMAGE PROMPT" : "❌ NOT IMAGE PROMPT") . "\n";
-    echo "---\n\n";
-}
-
-echo "=== Testing Full AI Response Generation ===\n\n";
-
-// Test with a clear image generation request
-$testMessage = "buatkan gambar kucing sedang balapan";
-echo "Testing full response generation for: \"$testMessage\"\n\n";
-
-try {
-    $response = $aiService->generateResponse(
-        $testMessage,
-        null, // persona
-        [], // chat history
-        'global', // chat type
-        [], // image urls
-        'gemini-2.5-flash-image' // selected model
-    );
-
-    echo "Response type: " . (is_array($response) ? 'array' : 'string') . "\n";
-
-    if (is_array($response)) {
-        echo "Response keys: " . implode(', ', array_keys($response)) . "\n";
-        echo "Response text: " . substr($response['response'] ?? '', 0, 200) . "...\n";
-        echo "Image URL: " . ($response['image_url'] ?? 'null') . "\n";
-        echo "Type: " . ($response['type'] ?? 'null') . "\n";
-
-        if (!empty($response['image_url'])) {
-            echo "✅ SUCCESS: Image URL generated!\n";
-
-            // Check if file exists
-            $imagePath = str_replace(asset('storage/'), storage_path('app/public/'), $response['image_url']);
-            if (file_exists($imagePath)) {
-                echo "✅ Image file exists at: $imagePath\n";
-                echo "File size: " . filesize($imagePath) . " bytes\n";
-            } else {
-                echo "❌ Image file not found at: $imagePath\n";
-            }
-        } else {
-            echo "❌ FAILED: No image URL in response\n";
+            expect($isImagePrompt)->toBe($expected, "Message: '$message' should " . ($expected ? 'trigger' : 'not trigger') . ' image generation');
         }
-    } else {
-        echo "Response: " . substr($response, 0, 200) . "...\n";
-        echo "❌ FAILED: Response is not an array (should be array for image generation)\n";
-    }
-} catch (Exception $e) {
-    echo "❌ ERROR: " . $e->getMessage() . "\n";
-}
+    });
 
-echo "\n=== Test Complete ===\n";
+    it('can generate AI response with image generation', function () {
+        $testMessage = "buatkan gambar kucing sedang balapan";
+
+        // Skip this test as it requires actual API calls
+        $this->markTestSkipped('Skipping AI response generation test as it requires API calls');
+
+        // Uncomment below to test with actual API
+        /*
+        $response = $this->aiService->generateResponse(
+            $testMessage,
+            null, // persona
+            [], // chat history
+            'global', // chat type
+            [], // image urls
+            'gemini-2.5-flash-image' // selected model
+        );
+
+        expect($response)->toBeArray();
+        expect($response)->toHaveKey('response');
+        expect($response)->toHaveKey('image_url');
+        expect($response)->toHaveKey('type');
+        expect($response['image_url'])->not->toBeNull();
+        */
+    });
+});
