@@ -96,7 +96,82 @@ class ChatController extends Controller
             'last_activity_at' => now(),
         ]);
 
+        // If a message is provided, process it as the first message
+        if ($request->has('message') && !empty($request->message)) {
+            try {
+                // Create user message history
+                $userHistory = ChatHistory::create([
+                    'user_id' => $user->id,
+                    'chat_session_id' => $session->id,
+                    'message' => $request->message,
+                    'sender' => 'user',
+                    'metadata' => json_encode([
+                        'timestamp' => now()->toISOString(),
+                        'user_agent' => $request->userAgent(),
+                    ]),
+                ]);
 
+                // Generate AI response
+                $aiResponse = $this->generateAIResponse(
+                    $request->message,
+                    $persona,
+                    [],
+                    $request->type ?? 'global',
+                    [],
+                    null,
+                    $session
+                );
+
+                // Create AI response history
+                ChatHistory::create([
+                    'user_id' => $user->id,
+                    'chat_session_id' => $session->id,
+                    'message' => $aiResponse['response'],
+                    'sender' => 'ai',
+                    'metadata' => json_encode([
+                        'timestamp' => now()->toISOString(),
+                        'model' => $session->preferred_model,
+                        'type' => $aiResponse['type'] ?? 'text',
+                        'image_url' => $aiResponse['image_url'] ?? null,
+                    ]),
+                ]);
+
+                // Return JSON response for API requests with AI response
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Chat session created and message sent successfully',
+                        'session_id' => $session->id,
+                        'user_message_id' => $userHistory->id,
+                        'response' => $aiResponse['response'],
+                        'type' => $aiResponse['type'] ?? 'text',
+                        'image_url' => $aiResponse['image_url'] ?? null,
+                        'redirect_url' => route('chat.show', $session)
+                    ]);
+                }
+            } catch (\Exception $e) {
+                \Log::error('Error processing first message in store method: ' . $e->getMessage());
+                
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Chat session created but failed to send first message: ' . $e->getMessage(),
+                        'session_id' => $session->id,
+                        'redirect_url' => route('chat.show', $session)
+                    ], 500);
+                }
+            }
+        }
+
+        // Return JSON response for API requests, redirect for web requests
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Chat session created successfully',
+                'session_id' => $session->id,
+                'redirect_url' => route('chat.show', $session)
+            ]);
+        }
 
         return redirect()->route('chat.show', $session);
     }
@@ -261,6 +336,15 @@ class ChatController extends Controller
 
         // Update session last activity
         $session->updateLastActivity();
+
+        // Return JSON response for API requests, redirect for web requests
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Message sent successfully',
+                'user_message_id' => $userMessage->id
+            ]);
+        }
 
         return back();
     }

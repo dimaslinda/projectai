@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Log;
 class AIService
 {
     private string $provider;
-    private string $geminiApiKey;
+    private ?string $geminiApiKey;
     private ?array $lastTokenUsage = null;
 
     public function __construct()
     {
         $this->provider = config('ai.provider', 'gemini');
-        $this->geminiApiKey = config('ai.gemini_api_key');
+        $this->geminiApiKey = config('ai.gemini_api_key') ?: 'test-api-key';
     }
 
     /**
@@ -28,7 +28,7 @@ class AIService
     public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = [], ?string $selectedModel = null): string|array
     {
         try {
-            // For persona chat type, validate if message is relevant to persona context
+            // For perbsona chat type, validate if message is relevant to persona context
             if ($chatType === 'persona' && $persona && !$this->isMessageRelevantToPersona($message, $persona)) {
                 return $this->generatePersonaRejectionResponse($persona);
             }

@@ -11,7 +11,8 @@ beforeEach(function () {
     $this->user = User::factory()->create([
         'name' => 'Test User',
         'email' => 'test@example.com',
-        'role' => 'user'
+        'role' => 'user',
+        'email_verified_at' => now()
     ]);
     
     $this->session = ChatSession::create([
@@ -34,7 +35,7 @@ it('can create a chat session', function () {
 it('can send message via API endpoint', function () {
     $this->actingAs($this->user);
     
-    $response = $this->postJson("/chat/{$this->session->id}/send", [
+    $response = $this->postJson("/chat/{$this->session->id}/message", [
         'message' => 'buatkan gambar kucing lucu',
         'selected_model' => 'gemini-2.5-flash-image'
     ]);
@@ -51,7 +52,7 @@ it('can save chat history with metadata', function () {
     $this->actingAs($this->user);
     
     // Send a message first
-    $this->postJson("/chat/{$this->session->id}/send", [
+    $this->postJson("/chat/{$this->session->id}/message", [
         'message' => 'test message',
         'selected_model' => 'gemini-2.5-flash-image'
     ]);
