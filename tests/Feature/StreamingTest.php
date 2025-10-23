@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 
 use App\Models\User;
 use App\Models\ChatSession;
@@ -8,7 +8,7 @@ use App\Models\ChatHistory;
 use Illuminate\Support\Facades\Log;
 
 // Bootstrap Laravel
-$app = require_once __DIR__ . '/bootstrap/app.php';
+$app = require_once __DIR__ . '/../../bootstrap/app.php';
 $app->make('Illuminate\Contracts\Console\Kernel')->bootstrap();
 
 echo "🔍 Testing Streaming Response for Image Generation\n";

@@ -16,6 +16,8 @@ ProjectAI adalah aplikasi chat cerdas yang mengintegrasikan AI (Google Gemini) d
 - **Global AI Assistant**: AI umum untuk berbagai topik
 - **Chat History**: Riwayat percakapan dengan context awareness
 - **Real-time Responses**: Streaming response untuk pengalaman yang responsif
+- **🎨 AI Image Generation**: Pembuatan gambar dengan Gemini 2.5 Flash Image
+- **✏️ AI Image Editing**: Pengeditan gambar langsung dengan instruksi natural language
 
 ### 👥 Persona System
 - **Engineer**: Spesialis teknik dan engineering
@@ -60,7 +62,8 @@ ProjectAI adalah aplikasi chat cerdas yang mengintegrasikan AI (Google Gemini) d
 
 ### AI Integration
 - **Google Gemini API** - Satu-satunya AI Provider
-- **Custom AI Service** - Abstraction layer
+- **Gemini 2.5 Flash Image** - AI image generation dan editing
+- **Custom AI Service** - Abstraction layer dengan multi-modal support
 
 ## 📋 Prerequisites
 
@@ -130,6 +133,15 @@ Lihat **[AI Integration Guide](AI_INTEGRATION_GUIDE.md)** untuk konfigurasi leng
 # Tambahkan ke .env
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-1.5-flash
+GEMINI_IMAGE_MODEL=gemini-2.5-flash
+
+# Optional: Fallback configuration
+AI_FALLBACK_ENABLED=true
+
+# Image Generation Settings
+IMAGE_GENERATION_ENABLED=true
+MAX_IMAGE_SIZE=2048
 ```
 
 ### 7. Build Assets
@@ -153,6 +165,24 @@ npm run dev
 ```
 
 Aplikasi akan tersedia di `http://localhost:8000`
+
+## 🆕 Recent Updates (v1.1.0)
+
+### ✨ New Features
+- **🎨 AI Image Generation**: Fitur pembuatan gambar dengan Gemini 2.5 Flash Image
+- **✏️ AI Image Editing**: Kemampuan edit gambar langsung dengan instruksi natural language
+- **🔧 Enhanced AI Service**: Improved multi-modal AI capabilities
+- **📊 Token Usage Tracking**: Monitoring penggunaan token AI untuk analytics
+
+### 🐛 Bug Fixes
+- **Fixed "This model only supports text output" error**: Perbaikan penggunaan model yang tepat untuk image editing
+- **Improved error handling**: Better error messages dan graceful degradation
+- **Test suite fixes**: Semua test files sekarang berjalan dengan benar
+
+### 🚀 Performance Improvements
+- **Optimized AI responses**: Faster response time untuk image generation
+- **Better caching**: Improved caching strategy untuk AI responses
+- **Enhanced UI/UX**: Smoother user experience untuk fitur image
 
 ## 📚 Documentation
 
@@ -217,6 +247,9 @@ npm run types
 ### AI Chat System
 - **Context-Aware**: AI memahami konteks percakapan sebelumnya
 - **Persona-Specific**: Setiap persona memiliki keahlian dan gaya komunikasi yang berbeda
+- **Multi-Modal Support**: Text, image generation, dan image editing dalam satu platform
+- **Image Generation**: Buat gambar dari deskripsi text dengan Gemini 2.5 Flash Image
+- **Image Editing**: Edit gambar existing dengan instruksi natural language
 - **Fallback Mode**: Sistem tetap berfungsi meski tanpa API key
 - **Error Handling**: Robust error handling dengan graceful degradation
 
@@ -250,8 +283,17 @@ Sistem persona memungkinkan AI untuk berperan sebagai:
 
 ## 🧪 Testing
 
+### Test Suite
+- **Feature Tests**: Comprehensive testing untuk semua fitur utama
+- **Unit Tests**: Testing untuk komponen individual
+- **API Tests**: Testing untuk semua endpoint API
+- **Image Processing Tests**: Testing untuk fitur AI image generation dan editing
+- **Authentication Tests**: Testing untuk sistem auth dan authorization
+
+### Running Tests
+
 ```bash
-# Run PHP tests
+# Run all PHP tests
 php artisan test
 
 # Run with coverage
@@ -259,7 +301,18 @@ php artisan test --coverage
 
 # Run specific test
 php artisan test --filter=UserTest
+
+# Run feature tests only
+php artisan test tests/Feature/
+
+# Run specific feature test
+php tests/Feature/ImageEditingTest.php
 ```
+
+### Recent Test Improvements
+- ✅ **Fixed autoload paths**: Semua test files sekarang menggunakan path yang benar
+- ✅ **Fixed bootstrap paths**: Laravel bootstrap loading diperbaiki untuk semua tests
+- ✅ **CI/CD Ready**: Tests siap untuk GitHub Actions dan environment CI/CD
 
 ## 📦 Deployment
 
