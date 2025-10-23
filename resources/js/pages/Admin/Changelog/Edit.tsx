@@ -118,7 +118,7 @@ export default function Edit({ changelog }: Props) {
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <AppLayout breadcrumbs={breadcrumbs} hideChangelogBanner={true}>
             <Head title={`Edit Changelog - ${changelog.version}`} />
 
             <div className="space-y-6 p-6">

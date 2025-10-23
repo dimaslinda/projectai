@@ -20,6 +20,7 @@ class ChatSession extends Model
         'user_id',
         'title',
         'chat_type',
+        'preferred_model',
         'persona',
         'description',
         'is_shared',
@@ -100,7 +101,7 @@ class ChatSession extends Model
     public function scopeViewableByRole($query, string $role)
     {
         return $query->where('is_shared', true)
-                    ->whereJsonContains('shared_with_roles', $role);
+            ->whereJsonContains('shared_with_roles', $role);
     }
 
     /**

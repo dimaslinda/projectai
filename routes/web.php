@@ -14,12 +14,22 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
-    })->name('dashboard');
+    })->name('dashboard')->middleware('dashboard-access');
 
 
     
     // Dashboard API routes
-    Route::get('api/dashboard/stats', [App\Http\Controllers\ChatController::class, 'getDashboardStats'])->name('dashboard.stats');
+    Route::get('api/dashboard/stats', [App\Http\Controllers\ChatController::class, 'getDashboardStats'])->name('dashboard.stats')->middleware('dashboard-access');
+    Route::get('api/dashboard/ai-traffic', [App\Http\Controllers\ChatController::class, 'getAITrafficData'])->name('dashboard.ai-traffic')->middleware('dashboard-access');
+    Route::get('api/dashboard/user-report', [App\Http\Controllers\ChatController::class, 'getUserReportData'])->name('dashboard.user-report')->middleware('dashboard-access');
+
+    // Changelog notification API routes
+    Route::prefix('api/changelog-notifications')->name('changelog-notifications.')->group(function () {
+        Route::get('/unread', [App\Http\Controllers\ChangelogNotificationController::class, 'getUnreadChangelogs'])->name('unread');
+        Route::post('/mark-read/{changelogId}', [App\Http\Controllers\ChangelogNotificationController::class, 'markAsRead'])->name('mark-read');
+        Route::post('/mark-all-read', [App\Http\Controllers\ChangelogNotificationController::class, 'markAllAsRead'])->name('mark-all-read');
+        Route::get('/status', [App\Http\Controllers\ChangelogNotificationController::class, 'getNotificationStatus'])->name('status');
+    });
 
     // Chat routes
     Route::prefix('chat')->name('chat.')->group(function () {

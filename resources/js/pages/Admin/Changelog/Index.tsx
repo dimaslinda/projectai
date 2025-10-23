@@ -93,7 +93,7 @@ export default function Index({ changelogs }: Props) {
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <AppLayout breadcrumbs={breadcrumbs} hideChangelogBanner={true}>
             <Head title="Changelog Management" />
 
             <div className="space-y-8 p-6">

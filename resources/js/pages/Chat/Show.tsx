@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNotification } from '@/hooks/useNotification';
@@ -47,7 +48,8 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
     const [isDragOver, setIsDragOver] = useState(false);
     const [streamingMessage, setStreamingMessage] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
-
+    const [streamingImage, setStreamingImage] = useState<string | null>(null);
+    const [selectedModel, setSelectedModel] = useState<'gemini-2.5-pro' | 'gemini-2.5-flash-image'>(session.preferred_model || 'gemini-2.5-pro');
     const [showNotificationSettings, setShowNotificationSettings] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -329,6 +331,9 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                 formData.append(`images[${index}]`, image);
             });
 
+            // Add selected model to form data
+            formData.append('selected_model', selectedModel);
+
             try {
                 // Use fetch for streaming instead of router.post
                 const response = await fetch(`/chat/${session.id}/message-stream`, {
@@ -369,6 +374,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     setIsStreaming(false);
                                     setIsSubmitting(false);
                                     setStreamingMessage('');
+                                    setStreamingImage(null);
                                     showAIResponseNotification();
 
                                     // Refresh the page data without full reload
@@ -387,11 +393,16 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                     const parsed = JSON.parse(data);
                                     if (parsed.type === 'chunk' && parsed.content) {
                                         setStreamingMessage((prev) => prev + parsed.content);
+                                    } else if (parsed.type === 'image') {
+                                        // Handle image response - set the image and continue streaming
+                                        setStreamingImage(parsed.image_url);
+                                        // Don't return here, continue processing other chunks
                                     } else if (parsed.type === 'complete') {
                                         // Streaming completed, show notification and refresh data
                                         setIsStreaming(false);
                                         setIsSubmitting(false);
                                         setStreamingMessage('');
+                                        setStreamingImage(null);
                                         showAIResponseNotification();
 
                                         // Refresh the page data without full reload
@@ -405,6 +416,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         return;
                                     } else if (parsed.type === 'error') {
                                         setStreamingMessage(parsed.content || 'Terjadi kesalahan');
+                                        setStreamingImage(null);
                                         setIsStreaming(false);
                                         setIsSubmitting(false);
                                         setTimeout(() => {
@@ -412,8 +424,9 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         }, 2000);
                                         return;
                                     } else if (parsed.type === 'start') {
-                                        // Handle start signal - just continue
-                                        continue;
+                                        // Handle start signal - reset streaming states
+                                        setStreamingMessage('');
+                                        setStreamingImage(null);
                                     }
                                 } catch {
                                     // If it's not valid JSON, treat it as plain text chunk
@@ -515,7 +528,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
             <div className="flex h-[calc(100vh-4rem)] flex-col">
                 {/* Header */}
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 bg-white/80 p-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/80">
+                <div className="flex flex-col gap-2 border-b border-gray-200 bg-white/80 p-3 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-900/80">
                     <div className="flex w-full items-center gap-3">
                         <Button
                             variant="ghost"
@@ -527,102 +540,102 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             <span className="hidden sm:inline">Kembali</span>
                         </Button>
                         <div className="min-w-0 flex-1">
-                            <h1 className="truncate bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-lg font-bold text-transparent dark:from-white dark:to-gray-300 sm:text-xl">
+                            <h1 className="truncate bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-lg font-bold text-transparent sm:text-xl dark:from-white dark:to-gray-300">
                                 {session.title}
                             </h1>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:text-sm">
-                                 <div className="flex items-center gap-1">
-                                     <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                                     <span>Oleh: {session.user.name}</span>
-                                 </div>
-                                 {session.persona && (
-                                     <Badge className={`${getRoleColor(session.persona)} shadow-sm`} variant="secondary">
-                                         {session.persona.toUpperCase()}
-                                     </Badge>
-                                 )}
-                                 <TooltipProvider>
-                                     <Tooltip>
-                                         <TooltipTrigger asChild>
-                                             <Badge
-                                                 variant="outline"
-                                                 className={`cursor-help shadow-sm ${
-                                                     session.chat_type === 'global'
-                                                         ? 'border-accent-foreground/20 bg-accent text-accent-foreground'
-                                                         : 'border-primary/30 bg-primary/10 text-primary'
-                                                 }`}
-                                             >
-                                                 {session.chat_type === 'global' ? 'Global Chat' : 'Persona Chat'}
-                                             </Badge>
-                                         </TooltipTrigger>
-                                         <TooltipContent>
-                                             <p>
-                                                 {session.chat_type === 'global'
-                                                     ? 'Chat umum dengan AI assistant'
-                                                     : `Chat dengan persona: ${session.persona}`}
-                                             </p>
-                                         </TooltipContent>
-                                     </Tooltip>
-                                 </TooltipProvider>
-                                 {session.is_shared && (
-                                     <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
-                                         <Share2 className="mr-1 h-3 w-3" />
-                                         Dibagikan
-                                     </Badge>
-                                 )}
-                             </div>
-                         </div>
-                     </div>
- 
-                     {canEdit && (
+                                <div className="flex items-center gap-1">
+                                    <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                    <span>Oleh: {session.user.name}</span>
+                                </div>
+                                {session.persona && (
+                                    <Badge className={`${getRoleColor(session.persona)} shadow-sm`} variant="secondary">
+                                        {session.persona.toUpperCase()}
+                                    </Badge>
+                                )}
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Badge
+                                                variant="outline"
+                                                className={`cursor-help shadow-sm ${
+                                                    session.chat_type === 'global'
+                                                        ? 'border-accent-foreground/20 bg-accent text-accent-foreground'
+                                                        : 'border-primary/30 bg-primary/10 text-primary'
+                                                }`}
+                                            >
+                                                {session.chat_type === 'global' ? 'Global Chat' : 'Persona Chat'}
+                                            </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>
+                                                {session.chat_type === 'global'
+                                                    ? 'Chat umum dengan AI assistant'
+                                                    : `Chat dengan persona: ${session.persona}`}
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                {session.is_shared && (
+                                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
+                                        <Share2 className="mr-1 h-3 w-3" />
+                                        Dibagikan
+                                    </Badge>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {canEdit && (
                         <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
-                             <DropdownMenu>
-                                 <DropdownMenuTrigger asChild>
-                                     <Button variant="outline" size="sm" className="rounded-xl">
-                                         <MoreVertical className="h-4 w-4 sm:mr-2" />
-                                         <span className="hidden sm:inline">Aksi</span>
-                                     </Button>
-                                 </DropdownMenuTrigger>
-                                 <DropdownMenuContent align="end" className="min-w-[180px]">
-                                     <DropdownMenuItem onSelect={() => setShowNotificationSettings(true)}>
-                                         <Settings className="mr-2 h-4 w-4" />
-                                         Notifikasi
-                                     </DropdownMenuItem>
-                                     <DropdownMenuItem onSelect={handleToggleSharing}>
-                                         <Share2 className="mr-2 h-4 w-4" />
-                                         {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
-                                     </DropdownMenuItem>
-                                     <DropdownMenuSeparator />
-                                     <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive">
-                                         <Trash2 className="mr-2 h-4 w-4" />
-                                         Hapus
-                                     </DropdownMenuItem>
-                                 </DropdownMenuContent>
-                             </DropdownMenu>
- 
-                             {/* Controlled AlertDialog for Delete */}
-                             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                                 <AlertDialogContent className="rounded-2xl">
-                                     <AlertDialogHeader>
-                                         <AlertDialogTitle className="text-xl font-bold">Hapus Sesi Chat</AlertDialogTitle>
-                                         <AlertDialogDescription className="leading-relaxed text-muted-foreground">
-                                             Apakah Anda yakin ingin menghapus sesi chat ini? Tindakan ini tidak dapat dibatalkan dan semua riwayat
-                                             percakapan akan hilang.
-                                         </AlertDialogDescription>
-                                     </AlertDialogHeader>
-                                     <AlertDialogFooter className="gap-3">
-                                         <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
-                                         <AlertDialogAction
-                                             onClick={handleDeleteSession}
-                                             className="rounded-xl bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground shadow-lg shadow-destructive/25 transition-all duration-200 hover:from-destructive/90 hover:to-destructive hover:shadow-destructive/40"
-                                         >
-                                             Hapus
-                                         </AlertDialogAction>
-                                     </AlertDialogFooter>
-                                 </AlertDialogContent>
-                             </AlertDialog>
-                         </div>
-                     )}
-                 </div>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="rounded-xl">
+                                        <MoreVertical className="h-4 w-4 sm:mr-2" />
+                                        <span className="hidden sm:inline">Aksi</span>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[180px]">
+                                    <DropdownMenuItem onSelect={() => setShowNotificationSettings(true)}>
+                                        <Settings className="mr-2 h-4 w-4" />
+                                        Notifikasi
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={handleToggleSharing}>
+                                        <Share2 className="mr-2 h-4 w-4" />
+                                        {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive">
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Hapus
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* Controlled AlertDialog for Delete */}
+                            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                                <AlertDialogContent className="rounded-2xl">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle className="text-xl font-bold">Hapus Sesi Chat</AlertDialogTitle>
+                                        <AlertDialogDescription className="leading-relaxed text-muted-foreground">
+                                            Apakah Anda yakin ingin menghapus sesi chat ini? Tindakan ini tidak dapat dibatalkan dan semua riwayat
+                                            percakapan akan hilang.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="gap-3">
+                                        <AlertDialogCancel className="rounded-xl">Batal</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={handleDeleteSession}
+                                            className="rounded-xl bg-gradient-to-r from-destructive to-destructive/90 text-destructive-foreground shadow-lg shadow-destructive/25 transition-all duration-200 hover:from-destructive/90 hover:to-destructive hover:shadow-destructive/40"
+                                        >
+                                            Hapus
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    )}
+                </div>
 
                 {/* Messages */}
                 <div
@@ -677,18 +690,46 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 <div className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-black/5 transition-all duration-200 dark:shadow-black/20">
                                     <div className="space-y-3">
                                         {streamingMessage ? (
-                                            <div className="text-sm leading-relaxed">
-                                                <MessageContent content={streamingMessage} className="text-sm leading-relaxed" />
-                                                <span className="ml-1 animate-pulse text-primary">|</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex space-x-1">
-                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80 [animation-delay:-0.3s]" />
-                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80 [animation-delay:-0.15s]" />
-                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-gradient-to-r from-primary to-primary/80" />
+                            <div className="text-sm leading-relaxed">
+                                <MessageContent content={streamingMessage} className="text-sm leading-relaxed" />
+                                <span className="ml-1 animate-pulse text-primary">|</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                                <div className="flex space-x-1">
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]"></div>
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]"></div>
+                                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary"></div>
+                                </div>
+                                <span>
+                                    {selectedModel === 'gemini-2.5-flash-image' && message.toLowerCase().includes('gambar') 
+                                        ? 'AI sedang membuat gambar...' 
+                                        : 'AI sedang mengetik...'}
+                                </span>
+                            </div>
+                        )}
+
+                                        {/* Display streaming image with enhanced loading state */}
+                                        {streamingImage && (
+                                            <div className="mt-3">
+                                                <div className="relative inline-block">
+                                                    <img
+                                                        src={streamingImage}
+                                                        alt="Generated image"
+                                                        className="max-w-full rounded-lg border border-gray-200 shadow-lg transition-transform hover:scale-105 dark:border-gray-700"
+                                                        style={{ maxHeight: '400px', width: 'auto' }}
+                                                        onLoad={() => {
+                                                            // Add a subtle animation when image loads
+                                                            const img = document.querySelector(`img[src="${streamingImage}"]`);
+                                                            if (img) {
+                                                                img.classList.add('animate-in', 'fade-in-50', 'zoom-in-95');
+                                                            }
+                                                        }}
+                                                    />
+                                                    <div className="absolute right-2 bottom-2 rounded bg-black/70 px-2 py-1 text-xs text-white backdrop-blur-sm">
+                                                        ✨ AI Generated
+                                                    </div>
                                                 </div>
-                                                <span className="ml-2 animate-pulse text-xs text-muted-foreground">AI sedang mengetik...</span>
                                             </div>
                                         )}
                                     </div>
@@ -782,51 +823,116 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             </div>
                         )}
 
-                        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                            {/* Textarea - auto-grow on the left */}
-                            <div className="relative flex-1">
-                                <Textarea
-                                    ref={textareaRef}
-                                    value={message}
-                                    onChange={handleMessageChange}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Ketik pesan Anda..."
-                                    className="max-h-[120px] min-h-[40px] resize-none rounded-xl border-gray-200 bg-white py-2 text-sm leading-5 shadow-sm transition-all duration-200 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
-                                    disabled={isSubmitting}
-                                />
-                                {isSubmitting && (
-                                    <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-gray-100/50 dark:bg-gray-800/50">
-                                        <div className="flex space-x-1">
-                                            <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.3s]" />
-                                            <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]" />
-                                            <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500" />
-                                        </div>
-                                    </div>
-                                )}
+                        <form onSubmit={handleSendMessage} className="space-y-3">
+                            {/* Mobile-First: Model Selector on top */}
+                            <div className="flex items-center justify-between gap-3 sm:hidden">
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Model:</span>
+                                <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isSubmitting}>
+                                    <SelectTrigger className="h-9 w-auto min-w-[120px] max-w-[160px] rounded-lg border-gray-200 bg-white text-sm shadow-sm transition-all duration-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800">
+                                        <SelectValue placeholder="Pilih Model" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-lg min-w-[180px]">
+                                        <SelectItem value="gemini-2.5-pro" className="rounded-md">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30">
+                                                    <Bot className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                                </div>
+                                                <span className="font-medium">Gemini Pro</span>
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="gemini-2.5-flash-image" className="rounded-md">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-100 dark:bg-purple-900/30">
+                                                    <ImagePlus className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                                                </div>
+                                                <span className="font-medium">Flash Image</span>
+                                            </div>
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
 
-                            {/* Actions - group on the right */}
-                            <div className="flex shrink-0 items-center gap-2">
-                                {/* Upload Button */}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isSubmitting}
-                                    className="h-10 rounded-xl border-gray-200 px-3 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-blue-950"
-                                    title="Pilih file gambar"
-                                >
-                                    <ImagePlus className="h-5 w-5" />
-                                </Button>
-                                {/* Send Button */}
-                                <Button
-                                    type="submit"
-                                    disabled={(!message.trim() && selectedImages.length === 0) || isSubmitting}
-                                    className="h-10 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-5 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-blue-500/40 disabled:opacity-50"
-                                >
-                                    <Send className="h-5 w-5" />
-                                </Button>
+                            {/* Input Row */}
+                            <div className="flex items-center gap-2">
+                                {/* Textarea - auto-grow on the left */}
+                                <div className="relative flex-1">
+                                    <Textarea
+                                        ref={textareaRef}
+                                        value={message}
+                                        onChange={handleMessageChange}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Ketik pesan Anda..."
+                                        className="max-h-[120px] min-h-[44px] resize-none rounded-xl border-gray-200 bg-white py-3 text-sm leading-5 shadow-sm transition-all duration-200 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 sm:min-h-[40px] sm:py-2"
+                                        disabled={isSubmitting}
+                                    />
+                                    {isSubmitting && (
+                                        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-gray-100/50 dark:bg-gray-800/50">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex space-x-1">
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.3s]" />
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]" />
+                                                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500" />
+                                                </div>
+                                                <span className="text-xs text-blue-600">
+                                                    {selectedModel === 'gemini-2.5-flash-image' && message.toLowerCase().includes('gambar') 
+                                                        ? 'Membuat gambar...' 
+                                                        : 'Mengirim...'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Desktop Model Selector - hidden on mobile */}
+                                <div className="hidden shrink-0 sm:block">
+                                    <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isSubmitting}>
+                                        <SelectTrigger className="h-10 w-auto min-w-[140px] max-w-[200px] rounded-xl border-gray-200 bg-white text-sm shadow-sm transition-all duration-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800">
+                                            <SelectValue placeholder="Pilih Model" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl min-w-[200px]">
+                                            <SelectItem value="gemini-2.5-pro" className="rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                                                        <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                    <span className="font-medium">Gemini 2.5 Pro</span>
+                                                </div>
+                                            </SelectItem>
+                                            <SelectItem value="gemini-2.5-flash-image" className="rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                                                        <ImagePlus className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                                    </div>
+                                                    <span className="font-medium">Gemini Flash Image</span>
+                                                </div>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex shrink-0 items-center gap-2">
+                                    {/* Upload Button */}
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={isSubmitting}
+                                        className="h-11 w-11 rounded-xl border-gray-200 p-0 transition-all duration-200 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:hover:bg-blue-950 sm:h-10 sm:w-auto sm:px-3"
+                                        title="Pilih file gambar"
+                                    >
+                                        <ImagePlus className="h-5 w-5" />
+                                    </Button>
+                                    {/* Send Button */}
+                                    <Button
+                                        type="submit"
+                                        disabled={(!message.trim() && selectedImages.length === 0) || isSubmitting}
+                                        className="h-11 w-11 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 p-0 text-white shadow-lg shadow-blue-500/25 transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-blue-500/40 disabled:opacity-50 sm:h-10 sm:w-auto sm:px-5"
+                                    >
+                                        <Send className="h-5 w-5" />
+                                    </Button>
+                                </div>
                             </div>
                         </form>
 

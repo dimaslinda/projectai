@@ -38,7 +38,7 @@ export default function Edit({ user }: Props) {
     };
 
     return (
-        <AppLayout>
+        <AppLayout hideChangelogBanner={true}>
             <Head title={`Edit User - ${user.name}`} />
 
             <div className="mb-8 flex flex-col justify-between gap-4 p-6 sm:flex-row sm:items-center">

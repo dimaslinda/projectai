@@ -1,139 +1,180 @@
+import React, { useEffect, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
-import { dashboard } from '@/routes';
-import dashboardRoutes from '@/routes/dashboard';
-import { type BreadcrumbItem, type SharedData } from '@/types';
-import { Head, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
-import { StatsWidget } from '@/components/dashboard/stats-widget';
-import { RecentActivityWidget } from '@/components/dashboard/recent-activity-widget';
-import { PersonaDistributionWidget } from '@/components/dashboard/persona-distribution-widget';
-import { QuickActionsWidget } from '@/components/dashboard/quick-actions-widget';
-import { AIUsageWidget } from '@/components/dashboard/ai-usage-widget';
-import { Card, CardContent } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { AITrafficWidget } from '@/components/dashboard/ai-traffic-widget';
+import { UserReportWidget } from '@/components/dashboard/user-report-widget';
+import { aiTraffic, userReport } from '@/routes/dashboard';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard().url,
-    },
-];
 
-interface DashboardStats {
-    totalSessions: number;
-    activeSessions: number;
-    sessionsByPersona: Record<string, number>;
-    recentSessions: Array<{
-        id: number;
-        title: string;
-        persona: string | null;
-        chat_type: string;
-        last_activity_at: string;
-        latest_message?: {
-            message: string;
-            is_ai: boolean;
-        };
+
+interface AITrafficData {
+    dailyData: Array<{
+        period: string;
+        aiMessages: number;
+        userMessages: number;
+        sessions: number;
+        avgResponseTime: number;
+        persona?: string;
     }>;
-    totalMessages: number;
-    aiMessages: number;
+    weeklyData: Array<{
+        period: string;
+        aiMessages: number;
+        userMessages: number;
+        sessions: number;
+        avgResponseTime: number;
+        persona?: string;
+    }>;
+    monthlyData: Array<{
+        period: string;
+        aiMessages: number;
+        userMessages: number;
+        sessions: number;
+        avgResponseTime: number;
+        persona?: string;
+    }>;
+    yearlyData: Array<{
+        period: string;
+        aiMessages: number;
+        userMessages: number;
+        sessions: number;
+        avgResponseTime: number;
+        persona?: string;
+    }>;
+}
+
+interface UserReportData {
+    personaStats: Array<{
+        persona: string;
+        userCount: number;
+        activeUsers: number;
+        totalSessions: number;
+        avgSessionsPerUser: number;
+        color: string;
+    }>;
+    topUsers: Array<{
+        id: number;
+        name: string;
+        email: string;
+        role: string;
+        totalSessions: number;
+        totalMessages: number;
+        lastActivity: string;
+        favoritePersona: string;
+    }>;
+    userGrowth: Array<{
+        period: string;
+        newUsers: number;
+        activeUsers: number;
+        totalUsers: number;
+    }>;
+    totalUsers: number;
+    activeUsers: number;
+    inactiveUsers: number;
+    tokenUsage: {
+        topUsers: Array<{
+            id: number;
+            name: string;
+            email: string;
+            role: string;
+            total_tokens: number;
+            input_tokens: number;
+            output_tokens: number;
+            message_count: number;
+            avg_tokens_per_message: number;
+        }>;
+        overview: {
+            total_tokens: number;
+            input_tokens: number;
+            output_tokens: number;
+            period: string;
+        };
+        byPersona: Array<{
+            persona: string;
+            total_tokens: number;
+            message_count: number;
+            avg_tokens_per_message: number;
+        }>;
+        dailyUsage: Array<{
+            date: string;
+            day: string;
+            tokens: number;
+        }>;
+    };
 }
 
 export default function Dashboard() {
-    const { auth } = usePage<SharedData>().props;
-    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [aiTrafficData, setAITrafficData] = useState<AITrafficData | null>(null);
+    const [userReportData, setUserReportData] = useState<UserReportData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const response = await fetch(dashboardRoutes.stats().url);
-                if (!response.ok) {
-                    throw new Error('Failed to fetch dashboard stats');
-                }
-                const data = await response.json();
-                setStats(data);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'An error occurred');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchStats();
+        fetchAllData();
     }, []);
+
+    const fetchAllData = async () => {
+        try {
+            const [trafficResponse, userResponse] = await Promise.all([
+                fetch(aiTraffic().url),
+                fetch(userReport().url)
+            ]);
+
+            const [trafficData, userData] = await Promise.all([
+                trafficResponse.json(),
+                userResponse.json()
+            ]);
+
+            setAITrafficData(trafficData);
+            setUserReportData(userData);
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     if (loading) {
         return (
-            <AppLayout breadcrumbs={breadcrumbs}>
-                <Head title="Dashboard" />
-                <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
-                    <Card>
-                        <CardContent className="flex items-center justify-center py-12">
-                            <div className="flex items-center gap-2">
-                                <Loader2 className="h-6 w-6 animate-spin" />
-                                <span>Memuat data dashboard...</span>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            </AppLayout>
-        );
-    }
-
-    if (error || !stats) {
-        return (
-            <AppLayout breadcrumbs={breadcrumbs}>
-                <Head title="Dashboard" />
-                <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
-                    <Card>
-                        <CardContent className="flex items-center justify-center py-12">
-                            <div className="text-center">
-                                <h3 className="text-lg font-medium text-destructive mb-2">
-                                    Error memuat data
-                                </h3>
-                                <p className="text-sm text-muted-foreground">
-                                    {error || 'Terjadi kesalahan saat memuat data dashboard'}
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
+            <AppLayout>
+                <div className="p-6">
+                    <div className="animate-pulse">
+                        <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {[...Array(6)].map((_, i) => (
+                                <div key={i} className="h-32 bg-gray-200 rounded"></div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </AppLayout>
         );
     }
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Dashboard" />
-            <div className="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-4">
-                {/* Stats Overview */}
-                <StatsWidget
-                    totalSessions={stats.totalSessions}
-                    activeSessions={stats.activeSessions}
-                    totalMessages={stats.totalMessages}
-                    aiMessages={stats.aiMessages}
-                />
-
-                {/* Main Content Grid */}
-                <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Recent Activity - Full width on mobile, half on desktop */}
-                    <div className="lg:col-span-1">
-                        <RecentActivityWidget recentSessions={stats.recentSessions} />
-                    </div>
-                    
-                    {/* Persona Distribution */}
-                    <div className="lg:col-span-1">
-                        <PersonaDistributionWidget sessionsByPersona={stats.sessionsByPersona} />
-                    </div>
+        <AppLayout>
+            <div className="p-6">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">Dashboard</h1>
+                
+                {/* AI Traffic Widget */}
+                <div className="mb-6">
+                    <AITrafficWidget 
+                        dailyData={aiTrafficData?.dailyData || []}
+                        weeklyData={aiTrafficData?.weeklyData || []}
+                        monthlyData={aiTrafficData?.monthlyData || []}
+                        yearlyData={aiTrafficData?.yearlyData || []}
+                        isLoading={loading}
+                    />
                 </div>
 
-                {/* Bottom Row - Quick Actions and AI Usage */}
-                <div className="grid gap-6 md:grid-cols-2">
-                    <QuickActionsWidget userRole={auth.user.role || 'user'} />
-                    <AIUsageWidget 
-                        totalMessages={stats.totalMessages} 
-                        aiMessages={stats.aiMessages} 
+                {/* User Report Widget */}
+                <div className="mb-6">
+                    <UserReportWidget 
+                        personaStats={userReportData?.personaStats || []}
+                        topUsers={userReportData?.topUsers || []}
+                        userGrowth={userReportData?.userGrowth || []}
+                        totalUsers={userReportData?.totalUsers || 0}
+                        activeUsers={userReportData?.activeUsers || 0}
+                        inactiveUsers={userReportData?.inactiveUsers || 0}
+                        tokenUsage={userReportData?.tokenUsage}
+                        isLoading={loading}
                     />
                 </div>
             </div>

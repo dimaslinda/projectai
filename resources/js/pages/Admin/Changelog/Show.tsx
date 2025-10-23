@@ -82,7 +82,7 @@ export default function Show({ changelog }: Props) {
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <AppLayout breadcrumbs={breadcrumbs} hideChangelogBanner={true}>
             <Head title={`Changelog - ${changelog.version}`} />
 
             <div className="space-y-6 p-6">

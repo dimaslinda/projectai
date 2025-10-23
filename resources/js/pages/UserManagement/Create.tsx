@@ -27,7 +27,7 @@ export default function Create() {
     };
 
     return (
-        <AppLayout>
+        <AppLayout hideChangelogBanner={true}>
             <Head title="Create User" />
 
             <div className="mb-8 flex items-center justify-between">

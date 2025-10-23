@@ -56,6 +56,7 @@ export interface ChatSession {
     description?: string;
     is_shared: boolean;
     shared_with_roles?: string[];
+    preferred_model?: 'gemini-2.5-pro' | 'gemini-2.5-flash-image';
     last_activity_at: string;
     created_at: string;
     updated_at: string;
@@ -95,9 +96,51 @@ export interface ChatHistory {
     chat_session_id: number;
     message: string;
     sender: 'user' | 'ai';
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
     metadata?: ChatMetadata;
     created_at: string;
     updated_at: string;
     user?: User;
     chat_session?: ChatSession;
+}
+
+export interface TokenUsageUser {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    total_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
+    message_count: number;
+    avg_tokens_per_message: number;
+}
+
+export interface TokenUsageOverview {
+    total_tokens: number;
+    input_tokens: number;
+    output_tokens: number;
+    period: string;
+}
+
+export interface TokenUsageByPersona {
+    persona: string;
+    total_tokens: number;
+    message_count: number;
+    avg_tokens_per_message: number;
+}
+
+export interface DailyTokenUsage {
+    date: string;
+    day: string;
+    tokens: number;
+}
+
+export interface TokenUsageData {
+    topUsers: TokenUsageUser[];
+    overview: TokenUsageOverview;
+    byPersona: TokenUsageByPersona[];
+    dailyUsage: DailyTokenUsage[];
 }

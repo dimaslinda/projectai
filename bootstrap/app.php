@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\DashboardAccess;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HandleLargeUploads;
@@ -38,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => CheckRole::class,
             'large-uploads' => HandleLargeUploads::class,
             'superadmin' => SuperadminMiddleware::class,
+            'dashboard-access' => DashboardAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

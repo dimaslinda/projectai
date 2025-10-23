@@ -110,4 +110,32 @@ class User extends Authenticatable
     {
         return $this->isSuperadmin();
     }
+
+    /**
+     * Get the changelog views for the user.
+     */
+    public function changelogViews()
+    {
+        return $this->hasMany(UserChangelogView::class);
+    }
+
+    /**
+     * Check if user has viewed a specific changelog.
+     */
+    public function hasViewedChangelog(int $changelogId): bool
+    {
+        return $this->changelogViews()->where('changelog_id', $changelogId)->exists();
+    }
+
+    /**
+     * Mark a changelog as viewed by the user.
+     */
+    public function markChangelogAsViewed(int $changelogId): void
+    {
+        $this->changelogViews()->firstOrCreate([
+            'changelog_id' => $changelogId,
+        ], [
+            'viewed_at' => now(),
+        ]);
+    }
 }

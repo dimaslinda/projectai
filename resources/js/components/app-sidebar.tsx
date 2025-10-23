@@ -12,11 +12,16 @@ export function AppSidebar() {
     const user = props.auth?.user;
 
     const mainNavItems: NavItem[] = [
-        {
-            title: 'Dasbor',
-            href: dashboard(),
-            icon: LayoutGrid,
-        },
+        // Only show Dashboard link for admin and superadmin
+        ...(user?.role === 'admin' || user?.role === 'superadmin'
+            ? [
+                  {
+                      title: 'Dasbor',
+                      href: dashboard(),
+                      icon: LayoutGrid,
+                  },
+              ]
+            : []),
         {
             title: 'AI Chat',
             href: '/chat',

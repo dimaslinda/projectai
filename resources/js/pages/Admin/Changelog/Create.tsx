@@ -94,7 +94,7 @@ export default function Create() {
     };
 
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <AppLayout breadcrumbs={breadcrumbs} hideChangelogBanner={true}>
             <Head title="Create Changelog Entry" />
 
             <div className="space-y-6 p-6">

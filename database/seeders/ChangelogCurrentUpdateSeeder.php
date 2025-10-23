@@ -23,24 +23,33 @@ class ChangelogCurrentUpdateSeeder extends Seeder
         }
 
         $changelog = [
-            'version' => 'v0.3.0',
+            'version' => 'v1.1.0',
             'release_date' => now()->format('Y-m-d'),
-            'type' => 'patch',
-            'title' => 'Perbaikan Bug & Peningkatan UI',
-            'description' => 'Perbaikan bug kritis untuk jalur import dan peningkatan komponen UI dalam sistem manajemen changelog.',
+            'type' => 'major',
+            'title' => 'Perbaikan Fitur Pengeditan Gambar AI & Peningkatan Sistem Pelaporan',
+            'description' => 'Update besar yang memperbaiki fitur pengeditan gambar AI agar dapat menghasilkan gambar yang diedit secara langsung, plus implementasi sistem pelaporan penggunaan token AI yang komprehensif dengan dashboard analitik dan visualisasi data real-time.',
             'changes' => [
-                'Memperbaiki error jalur import di halaman changelog (Edit, Show, Create)',
-                'Memperbaiki masalah tampilan breadcrumbs di semua halaman changelog',
-                'Memperbaiki error TypeScript komponen Badge dengan menghapus prop size yang tidak valid',
-                'Meningkatkan penanganan error dan stabilitas build',
-                'Meningkatkan pengalaman pengguna dengan navigasi breadcrumbs yang tepat'
+                '🎨 PERBAIKAN BESAR: Fitur pengeditan gambar AI sekarang dapat menghasilkan gambar yang diedit secara langsung',
+                '✨ Upload gambar dan berikan instruksi editing (contoh: "ubah menjadi hitam putih", "hapus background", "ganti warna")',
+                '🖼️ AI akan menghasilkan gambar hasil editing yang dapat langsung diunduh dan digunakan',
+                '🔧 Memperbaiki error "This model only supports text output" pada fitur editing gambar',
+                '📊 Menambahkan sistem tracking penggunaan token AI untuk monitoring konsumsi',
+                '📈 Implementasi widget laporan pengguna dengan grafik interaktif di dashboard',
+                '🥧 Menambahkan visualisasi penggunaan token per persona dengan diagram pie',
+                '📉 Implementasi grafik tren penggunaan token harian',
+                '📋 Menambahkan kartu statistik penggunaan token (total, rata-rata, efisiensi)',
+                '🎯 Perbaikan UI/UX banner notifikasi dengan positioning yang lebih baik',
+                '🛡️ Memperbaiki masalah error pada komponen chat yang dapat menyebabkan aplikasi crash'
             ],
             'technical_notes' => [
-                'Memperbarui jalur import dari @/routes/changelog ke @/routes/admin/changelog',
-                'Memperbaiki ketidaksesuaian properti breadcrumb (label vs title) di interface BreadcrumbItem',
-                'Menghapus prop size yang tidak valid dari komponen Badge di Show.tsx',
-                'Semua error kompilasi TypeScript telah diselesaikan',
-                'Proses build sekarang berhasil diselesaikan tanpa error'
+                'Fitur pengeditan gambar kini menggunakan model Gemini 2.5 Flash Image yang mendukung text-and-image-to-image generation',
+                'Sistem dapat memproses berbagai jenis instruksi editing: perubahan warna, penghapusan objek, penambahan elemen, filter, dan enhancement',
+                'Gambar hasil editing disimpan secara otomatis dan dapat diakses melalui URL yang aman',
+                'Sistem tracking token terintegrasi dengan database untuk akurasi data real-time',
+                'Widget laporan responsif dan kompatibel dengan berbagai ukuran layar',
+                'Notifikasi changelog kini dapat diakses dari semua halaman aplikasi',
+                'Peningkatan stabilitas aplikasi dengan perbaikan error handling pada komponen chat',
+                'Optimasi performa untuk pengalaman pengguna yang lebih lancar'
             ],
             'is_published' => true,
             'created_by' => $superadmin->id,
@@ -48,7 +57,7 @@ class ChangelogCurrentUpdateSeeder extends Seeder
 
         // Periksa apakah versi ini sudah ada
         $existingChangelog = Changelog::where('version', $changelog['version'])->first();
-        
+
         if ($existingChangelog) {
             $this->command->warn("Changelog versi {$changelog['version']} sudah ada. Melewati...");
             return;

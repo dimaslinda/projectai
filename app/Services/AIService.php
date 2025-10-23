@@ -9,6 +9,7 @@ class AIService
 {
     private string $provider;
     private string $geminiApiKey;
+    private ?array $lastTokenUsage = null;
 
     public function __construct()
     {
@@ -16,7 +17,15 @@ class AIService
         $this->geminiApiKey = config('ai.gemini_api_key');
     }
 
-    public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
+    /**
+     * Get the token usage from the last API call
+     */
+    public function getLastTokenUsage(): ?array
+    {
+        return $this->lastTokenUsage;
+    }
+
+    public function generateResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = [], ?string $selectedModel = null): string|array
     {
         try {
             // For persona chat type, validate if message is relevant to persona context
@@ -24,26 +33,48 @@ class AIService
                 return $this->generatePersonaRejectionResponse($persona);
             }
 
-            return $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType, $imageUrls);
+            return $this->generateGeminiResponse($message, $persona, $chatHistory, $chatType, $imageUrls, $selectedModel);
         } catch (\Exception $e) {
             Log::error('AI Service Error: ' . $e->getMessage());
             return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
         }
     }
 
-    private function generateGeminiResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = []): string
+    private function generateGeminiResponse(string $message, ?string $persona, array $chatHistory = [], string $chatType = 'persona', array $imageUrls = [], ?string $selectedModel = null): string|array
     {
         if (empty($this->geminiApiKey) || $this->geminiApiKey === 'your_gemini_api_key_here') {
             return $this->generateFallbackResponse($message, $persona, $chatType, $imageUrls);
         }
 
-        // Get persona-specific Gemini model - use vision model if images are present
-        $geminiModels = config('ai.gemini_models', []);
-        $selectedModel = $persona ? ($geminiModels[$persona] ?? 'gemini-2.5-pro') : 'gemini-2.5-pro';
+        // Auto-detect text-to-image prompts and switch to flash-image model
+        if ($this->isTextToImagePrompt($message)) {
+            $modelToUse = 'gemini-2.5-flash-image';
+            // For image generation, we need to handle the response differently
+            $systemPrompt = $this->getPersonaPrompt($persona, $chatType);
+            $contextPrompt = $this->buildContextFromHistory($chatHistory, true);
+            $textContent = $systemPrompt . $contextPrompt . "\n\nPertanyaan: " . $message;
+            return $this->generateGeminiImageResponse($textContent, $modelToUse);
+        }
 
-        // Use vision model if images are provided - gemini-2.5-pro supports multimodal natively
-        if (!empty($imageUrls)) {
-            $selectedModel = 'gemini-2.5-pro';
+        // Auto-detect image editing prompts
+        if ($this->isImageEditingPrompt($message) && !empty($imageUrls)) {
+            $modelToUse = 'gemini-2.5-flash-image'; // Use image generation model for editing
+            return $this->generateImageEditResponse($message, $imageUrls, $modelToUse);
+        }
+
+        // Determine the model to use for regular text generation
+        if ($selectedModel) {
+            // Use explicitly selected model
+            $modelToUse = $selectedModel;
+        } else {
+            // Get persona-specific Gemini model - use vision model if images are present
+            $geminiModels = config('ai.gemini_models', []);
+            $modelToUse = $persona ? ($geminiModels[$persona] ?? 'gemini-2.5-pro') : 'gemini-2.5-pro';
+
+            // Use vision model if images are provided - gemini-2.5-pro supports multimodal natively
+            if (!empty($imageUrls)) {
+                $modelToUse = 'gemini-2.5-pro';
+            }
         }
 
         $systemPrompt = $this->getPersonaPrompt($persona, $chatType);
@@ -80,7 +111,7 @@ class AIService
         }
 
         $response = Http::timeout(120)
-            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$selectedModel}:generateContent?key={$this->geminiApiKey}", [
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$modelToUse}:generateContent?key={$this->geminiApiKey}", [
                 'contents' => [
                     [
                         'parts' => $parts
@@ -104,6 +135,12 @@ class AIService
             if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
                 $responseText = $data['candidates'][0]['content']['parts'][0]['text'];
                 if (!empty(trim($responseText))) {
+                    // Extract token usage information
+                    $tokenUsage = $this->extractTokenUsage($data, $textContent, $responseText);
+
+                    // Store token usage in a property that can be accessed later
+                    $this->lastTokenUsage = $tokenUsage;
+
                     // Add warning if response was truncated
                     if ($finishReason === 'MAX_TOKENS') {
                         return $responseText . "\n\n[Respons dipotong karena mencapai batas token maksimum]";
@@ -175,6 +212,304 @@ class AIService
         throw new \Exception("Gemini API request failed (HTTP {$response->status()}): {$errorMessage}");
     }
 
+    private function generateGeminiImageResponse(string $textContent, string $modelToUse): array
+    {
+        // Log the request for debugging
+        Log::info('Gemini Image Generation Request', [
+            'model' => $modelToUse,
+            'prompt' => $textContent
+        ]);
+
+        $response = Http::timeout(120)
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$modelToUse}:generateContent?key={$this->geminiApiKey}", [
+                'contents' => [
+                    [
+                        'parts' => [
+                            ['text' => $textContent]
+                        ]
+                    ]
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.7,
+                    'topK' => 40,
+                    'topP' => 0.95,
+                    'maxOutputTokens' => 8192,
+                ]
+            ]);
+
+        // Log the full response for debugging
+        Log::info('Gemini Image Generation Response', [
+            'status' => $response->status(),
+            'response' => $response->json()
+        ]);
+
+        // Additional detailed logging
+        if ($response->successful()) {
+            $data = $response->json();
+            Log::info('Gemini Image Response Analysis', [
+                'has_candidates' => isset($data['candidates']),
+                'candidates_count' => isset($data['candidates']) ? count($data['candidates']) : 0,
+                'first_candidate_structure' => isset($data['candidates'][0]) ? array_keys($data['candidates'][0]) : [],
+                'has_content' => isset($data['candidates'][0]['content']),
+                'content_structure' => isset($data['candidates'][0]['content']) ? array_keys($data['candidates'][0]['content']) : [],
+                'has_parts' => isset($data['candidates'][0]['content']['parts']),
+                'parts_count' => isset($data['candidates'][0]['content']['parts']) ? count($data['candidates'][0]['content']['parts']) : 0,
+                'parts_structure' => isset($data['candidates'][0]['content']['parts'][0]) ? array_keys($data['candidates'][0]['content']['parts'][0]) : []
+            ]);
+        }
+
+        if ($response->successful()) {
+            $data = $response->json();
+
+            // Check if we have candidates and content
+            if (isset($data['candidates'][0]['content']['parts'])) {
+                $parts = $data['candidates'][0]['content']['parts'];
+                $result = '';
+
+                foreach ($parts as $part) {
+                    // Handle text response
+                    if (isset($part['text'])) {
+                        $result .= $part['text'] . "\n";
+                    }
+
+                    // Handle image response - check for inlineData (camelCase as per Google docs)
+                    if (isset($part['inlineData'])) {
+                        $imageData = $part['inlineData']['data'];
+                        $mimeType = $part['inlineData']['mimeType'];
+
+                        // Save the image to storage
+                        $imageName = 'generated_' . time() . '_' . uniqid() . '.png';
+                        $imagePath = 'images/generated/' . $imageName;
+
+                        // Create directory if it doesn't exist
+                        $fullPath = storage_path('app/public/' . $imagePath);
+                        $directory = dirname($fullPath);
+                        if (!file_exists($directory)) {
+                            mkdir($directory, 0755, true);
+                        }
+
+                        // Decode and save the image
+                        $imageContent = base64_decode($imageData);
+                        file_put_contents($fullPath, $imageContent);
+
+                        // Log successful image save
+                        Log::info('Image saved successfully', [
+                            'path' => $fullPath,
+                            'size' => strlen($imageContent)
+                        ]);
+
+                        // Return the image URL
+                        $imageUrl = asset('storage/' . $imagePath);
+                        $result .= "Gambar berhasil dibuat!\n";
+
+                        // Store image URL for return
+                        $generatedImageUrl = $imageUrl;
+                    }
+                }
+
+                if (!empty(trim($result))) {
+                    return [
+                        'response' => trim($result),
+                        'image_url' => $generatedImageUrl ?? null,
+                        'type' => 'image'
+                    ];
+                }
+            }
+
+            // If no valid content found, log and throw exception
+            Log::warning('Gemini Image API returned empty or invalid response', ['response' => $data]);
+            return [
+                'response' => "Maaf, tidak dapat menghasilkan gambar. Response dari API kosong atau tidak valid.",
+                'image_url' => null,
+                'type' => 'error'
+            ];
+        }
+
+        // Handle API errors
+        $errorData = $response->json();
+        $errorCode = $errorData['error']['code'] ?? 0;
+        $errorMessage = $errorData['error']['message'] ?? 'Unknown error';
+
+        Log::error('Gemini Image API request failed', [
+            'status' => $response->status(),
+            'error_code' => $errorCode,
+            'error_message' => $errorMessage,
+            'full_response' => $errorData
+        ]);
+
+        return [
+            'response' => "Maaf, terjadi kesalahan saat menghasilkan gambar: {$errorMessage}",
+            'image_url' => null,
+            'type' => 'error'
+        ];
+    }
+
+    private function generateImageEditResponse(string $editPrompt, array $imageUrls, string $modelToUse = 'gemini-2.5-flash-image'): array
+    {
+        // Log the request for debugging
+        Log::info('Gemini Image Edit Request', [
+            'model' => $modelToUse,
+            'prompt' => $editPrompt,
+            'image_count' => count($imageUrls)
+        ]);
+
+        if (empty($imageUrls)) {
+            return [
+                'response' => "Untuk mengedit gambar, silakan upload gambar terlebih dahulu.",
+                'image_url' => null,
+                'type' => 'error'
+            ];
+        }
+
+        // Prepare content parts for text-and-image-to-image editing
+        $parts = [];
+
+        // Add editing instruction as text
+        $parts[] = ['text' => $editPrompt];
+
+        // Add images for editing
+        foreach ($imageUrls as $imageUrl) {
+            try {
+                // Convert image URL to base64
+                $imageData = $this->getImageAsBase64($imageUrl);
+                if ($imageData) {
+                    $parts[] = [
+                        'inline_data' => [
+                            'mime_type' => $imageData['mime_type'],
+                            'data' => $imageData['data']
+                        ]
+                    ];
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to process image for editing: ' . $e->getMessage());
+            }
+        }
+
+        $response = Http::timeout(120)
+            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$modelToUse}:generateContent?key={$this->geminiApiKey}", [
+                'contents' => [
+                    [
+                        'parts' => $parts
+                    ]
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.7,
+                    'topK' => 40,
+                    'topP' => 0.95,
+                    'maxOutputTokens' => 8192,
+                    'response_modalities' => ['TEXT', 'IMAGE']
+                ]
+            ]);
+
+        // Log the full response for debugging
+        Log::info('Gemini Image Edit Response', [
+            'status' => $response->status(),
+            'response' => $response->json()
+        ]);
+
+        if ($response->successful()) {
+            $data = $response->json();
+
+            // Check if we have candidates and content
+            if (isset($data['candidates'][0]['content']['parts'])) {
+                $parts = $data['candidates'][0]['content']['parts'];
+                $result = '';
+                $editedImageUrl = null;
+
+                foreach ($parts as $part) {
+                    // Handle text response
+                    if (isset($part['text'])) {
+                        $result .= $part['text'] . "\n";
+                    }
+
+                    // Handle edited image response
+                    if (isset($part['inlineData'])) {
+                        $imageData = $part['inlineData']['data'];
+                        $mimeType = $part['inlineData']['mimeType'];
+
+                        // Save the edited image to storage
+                        $imageName = 'edited_' . time() . '_' . uniqid() . '.png';
+                        $imagePath = 'images/edited/' . $imageName;
+
+                        // Create directory if it doesn't exist
+                        $fullPath = storage_path('app/public/' . $imagePath);
+                        $directory = dirname($fullPath);
+                        if (!file_exists($directory)) {
+                            mkdir($directory, 0755, true);
+                        }
+
+                        // Decode and save the image
+                        $imageContent = base64_decode($imageData);
+                        file_put_contents($fullPath, $imageContent);
+
+                        // Log successful image save
+                        Log::info('Edited image saved successfully', [
+                            'path' => $fullPath,
+                            'size' => strlen($imageContent)
+                        ]);
+
+                        // Return the image URL
+                        $editedImageUrl = asset('storage/' . $imagePath);
+                        $result .= "\n\nGambar berhasil diedit! Berikut hasil editingnya.";
+                    }
+                }
+
+                if (!empty(trim($result)) || $editedImageUrl) {
+                    if ($editedImageUrl) {
+                        // We have an edited image - this is actual image editing
+                        $finalResponse = "✨ **GAMBAR BERHASIL DIEDIT!**\n\n";
+                        if (!empty(trim($result))) {
+                            $finalResponse .= trim($result) . "\n\n";
+                        }
+                        $finalResponse .= "Berikut adalah hasil editing gambar Anda:";
+                        
+                        return [
+                            'response' => $finalResponse,
+                            'image_url' => $editedImageUrl,
+                            'type' => 'image_edit_success'
+                        ];
+                    } else {
+                        // Only text response - analysis/guidance
+                        $finalResponse = "📸 **ANALISIS & PANDUAN EDITING GAMBAR**\n\n";
+                        $finalResponse .= trim($result);
+                        $finalResponse .= "\n\n---\n";
+                        $finalResponse .= "💡 **Catatan**: Saat ini saya memberikan analisis dan panduan editing. Untuk hasil editing aktual, gunakan software editing gambar dengan instruksi di atas.";
+                        
+                        return [
+                            'response' => $finalResponse,
+                            'image_url' => null,
+                            'type' => 'image_analysis'
+                        ];
+                    }
+                }
+            }
+
+            // If no valid content found, provide error message
+            return [
+                'response' => "Maaf, tidak dapat memproses permintaan editing gambar Anda saat ini. Silakan coba lagi dengan instruksi editing yang lebih spesifik.",
+                'image_url' => null,
+                'type' => 'error'
+            ];
+        }
+
+        // Handle API errors
+        $errorData = $response->json();
+        $errorCode = $errorData['error']['code'] ?? 0;
+        $errorMessage = $errorData['error']['message'] ?? 'Unknown error';
+
+        Log::error('Gemini Image Edit API request failed', [
+            'status' => $response->status(),
+            'error_code' => $errorCode,
+            'error_message' => $errorMessage,
+            'full_response' => $errorData
+        ]);
+
+        return [
+            'response' => "Maaf, terjadi kesalahan saat mengedit gambar: {$errorMessage}",
+            'image_url' => null,
+            'type' => 'error'
+        ];
+    }
 
     private function getPersonaPrompt(?string $persona, string $chatType = 'persona'): string
     {
@@ -227,79 +562,278 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
     {
         // Convert message to lowercase for better matching
         $messageLower = strtolower($message);
-        
+
         // Define keywords for each persona
         $personaKeywords = [
             'engineer' => [
                 // Engineering keywords
-                'struktur', 'bangunan', 'konstruksi', 'beton', 'baja', 'fondasi', 'balok', 'kolom',
-                'analisis', 'perhitungan', 'beban', 'gempa', 'seismic', 'kekuatan', 'material',
-                'desain', 'blueprint', 'gambar teknik', 'spesifikasi', 'standar', 'kode bangunan',
-                'sipil', 'engineering', 'teknik', 'infrastruktur', 'jembatan', 'gedung',
-                'autocad', 'cad', 'sap2000', 'etabs', 'staad', 'tekla', 'revit'
+                'struktur',
+                'bangunan',
+                'konstruksi',
+                'beton',
+                'baja',
+                'fondasi',
+                'balok',
+                'kolom',
+                'analisis',
+                'perhitungan',
+                'beban',
+                'gempa',
+                'seismic',
+                'kekuatan',
+                'material',
+                'desain',
+                'blueprint',
+                'gambar teknik',
+                'spesifikasi',
+                'standar',
+                'kode bangunan',
+                'sipil',
+                'engineering',
+                'teknik',
+                'infrastruktur',
+                'jembatan',
+                'gedung',
+                'autocad',
+                'cad',
+                'sap2000',
+                'etabs',
+                'staad',
+                'tekla',
+                'revit'
             ],
             'drafter' => [
                 // Drafting keywords
-                'gambar', 'drawing', 'draft', 'blueprint', 'sketsa', 'rencana', 'denah',
-                'autocad', 'cad', 'dwg', 'dxf', 'layout', 'dimensi', 'skala', 'proyeksi',
-                'detail', 'potongan', 'tampak', 'isometrik', 'perspektif', 'rendering',
-                'dokumentasi', 'spesifikasi', 'standar gambar', 'simbol', 'notasi',
-                'revit', 'sketchup', 'solidworks', 'inventor', 'fusion', 'tekla'
+                'gambar',
+                'drawing',
+                'draft',
+                'blueprint',
+                'sketsa',
+                'rencana',
+                'denah',
+                'autocad',
+                'cad',
+                'dwg',
+                'dxf',
+                'layout',
+                'dimensi',
+                'skala',
+                'proyeksi',
+                'detail',
+                'potongan',
+                'tampak',
+                'isometrik',
+                'perspektif',
+                'rendering',
+                'dokumentasi',
+                'spesifikasi',
+                'standar gambar',
+                'simbol',
+                'notasi',
+                'revit',
+                'sketchup',
+                'solidworks',
+                'inventor',
+                'fusion',
+                'tekla'
             ],
             'esr' => [
                 // Tower survey keywords
-                'tower', 'menara', 'telekomunikasi', 'antenna', 'antena', 'bts', 'survey',
-                'orientasi', 'depan', 'samping', 'belakang', 'struktur tower', 'equipment',
-                'perangkat', 'mounting', 'feeder', 'coaxial', 'waveguide', 'grounding',
-                'guy wire', 'foundation', 'base station', 'cellular', 'radio', 'microwave'
+                'tower',
+                'menara',
+                'telekomunikasi',
+                'antenna',
+                'antena',
+                'bts',
+                'survey',
+                'orientasi',
+                'depan',
+                'samping',
+                'belakang',
+                'struktur tower',
+                'equipment',
+                'perangkat',
+                'mounting',
+                'feeder',
+                'coaxial',
+                'waveguide',
+                'grounding',
+                'guy wire',
+                'foundation',
+                'base station',
+                'cellular',
+                'radio',
+                'microwave'
             ],
             'hr' => [
                 // HR keywords
-                'karyawan', 'pegawai', 'sdm', 'human resource', 'rekrutmen', 'recruitment',
-                'interview', 'wawancara', 'seleksi', 'training', 'pelatihan', 'pengembangan',
-                'kinerja', 'performance', 'evaluasi', 'promosi', 'karir', 'gaji', 'benefit',
-                'kebijakan', 'policy', 'absensi', 'cuti', 'disiplin', 'motivasi', 'leadership'
+                'karyawan',
+                'pegawai',
+                'sdm',
+                'human resource',
+                'rekrutmen',
+                'recruitment',
+                'interview',
+                'wawancara',
+                'seleksi',
+                'training',
+                'pelatihan',
+                'pengembangan',
+                'kinerja',
+                'performance',
+                'evaluasi',
+                'promosi',
+                'karir',
+                'gaji',
+                'benefit',
+                'kebijakan',
+                'policy',
+                'absensi',
+                'cuti',
+                'disiplin',
+                'motivasi',
+                'leadership'
             ],
             'finance' => [
                 // Finance keywords
-                'keuangan', 'finance', 'akuntansi', 'accounting', 'laporan', 'budget', 'anggaran',
-                'cash flow', 'arus kas', 'investasi', 'profit', 'loss', 'revenue', 'pendapatan',
-                'biaya', 'cost', 'pajak', 'tax', 'audit', 'balance sheet', 'neraca',
-                'income statement', 'laba rugi', 'roi', 'npv', 'irr', 'payback period'
+                'keuangan',
+                'finance',
+                'akuntansi',
+                'accounting',
+                'laporan',
+                'budget',
+                'anggaran',
+                'cash flow',
+                'arus kas',
+                'investasi',
+                'profit',
+                'loss',
+                'revenue',
+                'pendapatan',
+                'biaya',
+                'cost',
+                'pajak',
+                'tax',
+                'audit',
+                'balance sheet',
+                'neraca',
+                'income statement',
+                'laba rugi',
+                'roi',
+                'npv',
+                'irr',
+                'payback period'
             ],
             'it' => [
                 // IT keywords
-                'teknologi', 'technology', 'sistem', 'system', 'software', 'hardware', 'network',
-                'jaringan', 'server', 'database', 'programming', 'coding', 'development',
-                'website', 'aplikasi', 'application', 'security', 'keamanan', 'backup',
-                'cloud', 'infrastructure', 'troubleshooting', 'maintenance', 'upgrade'
+                'teknologi',
+                'technology',
+                'sistem',
+                'system',
+                'software',
+                'hardware',
+                'network',
+                'jaringan',
+                'server',
+                'database',
+                'programming',
+                'coding',
+                'development',
+                'website',
+                'aplikasi',
+                'application',
+                'security',
+                'keamanan',
+                'backup',
+                'cloud',
+                'infrastructure',
+                'troubleshooting',
+                'maintenance',
+                'upgrade'
             ],
             'marketing' => [
                 // Marketing keywords
-                'pemasaran', 'marketing', 'promosi', 'promotion', 'iklan', 'advertising',
-                'brand', 'branding', 'campaign', 'kampanye', 'digital marketing', 'social media',
-                'content', 'konten', 'seo', 'sem', 'google ads', 'facebook ads', 'instagram',
-                'customer', 'pelanggan', 'target market', 'segmentasi', 'positioning'
+                'pemasaran',
+                'marketing',
+                'promosi',
+                'promotion',
+                'iklan',
+                'advertising',
+                'brand',
+                'branding',
+                'campaign',
+                'kampanye',
+                'digital marketing',
+                'social media',
+                'content',
+                'konten',
+                'seo',
+                'sem',
+                'google ads',
+                'facebook ads',
+                'instagram',
+                'customer',
+                'pelanggan',
+                'target market',
+                'segmentasi',
+                'positioning'
             ],
             'operations' => [
                 // Operations keywords
-                'operasional', 'operations', 'proses', 'process', 'produksi', 'production',
-                'supply chain', 'logistik', 'logistics', 'inventory', 'stock', 'quality',
-                'kualitas', 'control', 'improvement', 'efficiency', 'efisiensi', 'workflow',
-                'sop', 'standard operating procedure', 'lean', 'six sigma', 'kaizen'
+                'operasional',
+                'operations',
+                'proses',
+                'process',
+                'produksi',
+                'production',
+                'supply chain',
+                'logistik',
+                'logistics',
+                'inventory',
+                'stock',
+                'quality',
+                'kualitas',
+                'control',
+                'improvement',
+                'efficiency',
+                'efisiensi',
+                'workflow',
+                'sop',
+                'standard operating procedure',
+                'lean',
+                'six sigma',
+                'kaizen'
             ],
             'legal' => [
                 // Legal keywords
-                'hukum', 'legal', 'kontrak', 'contract', 'perjanjian', 'agreement', 'compliance',
-                'regulasi', 'regulation', 'undang-undang', 'peraturan', 'litigation', 'dispute',
-                'intellectual property', 'patent', 'trademark', 'copyright', 'license',
-                'corporate law', 'business law', 'employment law', 'tax law'
+                'hukum',
+                'legal',
+                'kontrak',
+                'contract',
+                'perjanjian',
+                'agreement',
+                'compliance',
+                'regulasi',
+                'regulation',
+                'undang-undang',
+                'peraturan',
+                'litigation',
+                'dispute',
+                'intellectual property',
+                'patent',
+                'trademark',
+                'copyright',
+                'license',
+                'corporate law',
+                'business law',
+                'employment law',
+                'tax law'
             ]
         ];
 
         // Get keywords for the current persona
         $keywords = $personaKeywords[$persona] ?? [];
-        
+
         // Check if any keyword matches the message
         foreach ($keywords as $keyword) {
             if (strpos($messageLower, strtolower($keyword)) !== false) {
@@ -309,9 +843,30 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
 
         // Additional check for common greetings and persona-related questions
         $commonPhrases = [
-            'halo', 'hai', 'hello', 'selamat', 'terima kasih', 'thanks', 'tolong', 'bantu',
-            'bisa', 'dapat', 'help', 'assist', 'bagaimana', 'how', 'apa', 'what',
-            'siapa', 'who', 'dimana', 'where', 'kapan', 'when', 'mengapa', 'why'
+            'halo',
+            'hai',
+            'hello',
+            'selamat',
+            'terima kasih',
+            'thanks',
+            'tolong',
+            'bantu',
+            'bisa',
+            'dapat',
+            'help',
+            'assist',
+            'bagaimana',
+            'how',
+            'apa',
+            'what',
+            'siapa',
+            'who',
+            'dimana',
+            'where',
+            'kapan',
+            'when',
+            'mengapa',
+            'why'
         ];
 
         foreach ($commonPhrases as $phrase) {
@@ -374,11 +929,11 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         $expertise = $personaExpertise[$persona] ?? 'bidang keahlian khusus';
 
         return "Maaf, saya adalah **{$personaName}** yang mengkhususkan diri dalam **{$expertise}**.\n\n" .
-               "Pertanyaan Anda tampaknya berada di luar bidang keahlian saya. Untuk mendapatkan bantuan dengan topik tersebut, silakan:\n\n" .
-               "1. **Gunakan Chat Global** - untuk pertanyaan umum dan topik di luar persona\n" .
-               "2. **Pilih persona yang sesuai** - jika ada persona lain yang lebih relevan\n" .
-               "3. **Ajukan pertanyaan yang relevan** - terkait dengan {$expertise}\n\n" .
-               "Saya siap membantu Anda dengan pertanyaan yang berkaitan dengan bidang keahlian saya! 😊";
+            "Pertanyaan Anda tampaknya berada di luar bidang keahlian saya. Untuk mendapatkan bantuan dengan topik tersebut, silakan:\n\n" .
+            "1. **Gunakan Chat Global** - untuk pertanyaan umum dan topik di luar persona\n" .
+            "2. **Pilih persona yang sesuai** - jika ada persona lain yang lebih relevan\n" .
+            "3. **Ajukan pertanyaan yang relevan** - terkait dengan {$expertise}\n\n" .
+            "Saya siap membantu Anda dengan pertanyaan yang berkaitan dengan bidang keahlian saya! 😊";
     }
 
     private function generateFallbackResponse(string $message, ?string $persona, string $chatType = 'persona', array $imageUrls = []): string
@@ -393,7 +948,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                 'engineer' => 'Sebagai Insinyur Sipil yang mengkhususkan diri dalam desain dan analisis struktural, saya dapat membantu Anda dengan perhitungan, spesifikasi material, kode bangunan, dan penilaian struktural.',
                 'drafter' => 'Sebagai Drafter Teknis, saya dapat membantu Anda dengan gambar CAD, spesifikasi teknis, pembuatan blueprint, dan dokumentasi desain.',
                 'esr' => 'Sebagai spesialis Tower Survey, saya dapat membantu Anda dengan analisis gambar survey tower telekomunikasi, identifikasi orientasi tower, dan evaluasi kondisi struktur.',
-            
+
                 // Business divisions
                 'hr' => 'Sebagai spesialis Human Resources, saya dapat membantu Anda dengan manajemen SDM, rekrutmen, pengembangan karyawan, dan kebijakan perusahaan.',
                 'finance' => 'Sebagai spesialis Keuangan, saya dapat membantu Anda dengan analisis keuangan, budgeting, perencanaan keuangan, dan manajemen risiko.',
@@ -422,7 +977,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
     /**
      * Build context from chat history for Gemini (text-based)
      */
-    private function buildContextFromHistory(array $chatHistory): string
+    private function buildContextFromHistory(array $chatHistory, bool $isImageRequest = false): string
     {
         if (empty($chatHistory)) {
             return '';
@@ -438,21 +993,35 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
             if (!is_array($chat) && !is_object($chat)) {
                 continue;
             }
-            
+
             // Handle both array and object structures
             $sender = is_array($chat) ? ($chat['sender'] ?? 'unknown') : ($chat->sender ?? 'unknown');
             $message = is_array($chat) ? ($chat['message'] ?? '') : ($chat->message ?? '');
-            
+
             // Skip if essential data is missing
             if (empty($sender) || empty($message)) {
                 continue;
             }
-            
+
+            // For image requests, filter out previous AI image responses to avoid repetition
+            if ($isImageRequest && $sender === 'ai') {
+                // Skip AI responses that contain image generation confirmations
+                if (strpos($message, 'Tentu, ini dia gambar') !== false || 
+                    strpos($message, 'Gambar berhasil dibuat') !== false ||
+                    strpos($message, '![Generated Image]') !== false) {
+                    continue;
+                }
+            }
+
             $senderDisplay = $sender === 'user' ? 'Pengguna' : 'AI';
             $context .= "\n{$senderDisplay}: {$message}";
         }
 
-        $context .= "\n\nBerdasarkan konteks percakapan di atas, mohon berikan respons yang relevan dan konsisten.";
+        if ($isImageRequest) {
+            $context .= "\n\nBerdasarkan konteks percakapan di atas, buatlah gambar baru yang unik sesuai permintaan terbaru.";
+        } else {
+            $context .= "\n\nBerdasarkan konteks percakapan di atas, mohon berikan respons yang relevan dan konsisten.";
+        }
 
         return $context;
     }
@@ -486,10 +1055,10 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                 }
 
                 $mimeType = mime_content_type($imageUrl);
-                
+
                 // Optimize image if it's too large
                 $imageData = $this->optimizeImageForAI($imageUrl, $mimeType);
-                
+
                 // If we converted SVG to PNG, update the MIME type
                 if ($mimeType === 'image/svg+xml') {
                     $mimeType = 'image/png';
@@ -501,10 +1070,10 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                     ini_set('memory_limit', $originalMemoryLimit);
                     return null;
                 }
-                
+
                 $imageData = $response->body();
                 $mimeType = $response->header('Content-Type') ?? 'image/jpeg';
-                
+
                 // Check response size
                 if (strlen($imageData) > 50 * 1024 * 1024) { // 50MB limit
                     Log::warning('Downloaded image too large for processing');
@@ -558,13 +1127,13 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         if (str_starts_with($url, $appUrl)) {
             // Convert URL to file path
             $relativePath = str_replace($appUrl, '', $url);
-            
+
             // Handle storage URLs
             if (str_starts_with($relativePath, '/storage/')) {
                 $storagePath = str_replace('/storage/', '', $relativePath);
                 return storage_path('app/public/' . $storagePath);
             }
-            
+
             // Handle public URLs
             return public_path(ltrim($relativePath, '/'));
         }
@@ -591,7 +1160,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
 
             $width = $imageInfo[0];
             $height = $imageInfo[1];
-            
+
             // If image is larger than 2048px on any side, resize it
             $maxDimension = 2048;
             if ($width > $maxDimension || $height > $maxDimension) {
@@ -645,7 +1214,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
 
             // Create new image
             $resizedImage = imagecreatetruecolor($newWidth, $newHeight);
-            
+
             // Preserve transparency for PNG and GIF
             if ($mimeType === 'image/png' || $mimeType === 'image/gif') {
                 imagealphablending($resizedImage, false);
@@ -681,7 +1250,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
             imagedestroy($resizedImage);
 
             Log::info("Image resized from {$width}x{$height} to {$newWidth}x{$newHeight}");
-            
+
             return $imageData;
         } catch (\Exception $e) {
             Log::warning('Failed to resize image: ' . $e->getMessage());
@@ -697,18 +1266,18 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         try {
             // Read SVG content
             $svgContent = file_get_contents($svgPath);
-            
+
             // Extract width and height from SVG if available
             $width = 800; // Default width
             $height = 600; // Default height
-            
+
             if (preg_match('/width=["\'](\d+)["\']/', $svgContent, $matches)) {
                 $width = intval($matches[1]);
             }
             if (preg_match('/height=["\'](\d+)["\']/', $svgContent, $matches)) {
                 $height = intval($matches[1]);
             }
-            
+
             // If width/height are too large, scale them down
             $maxDimension = 2048;
             if ($width > $maxDimension || $height > $maxDimension) {
@@ -719,28 +1288,28 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
 
             // Create a canvas
             $image = imagecreatetruecolor($width, $height);
-            
+
             // Set white background
             $white = imagecolorallocate($image, 255, 255, 255);
             imagefill($image, 0, 0, $white);
-            
+
             // For simple SVG conversion, we'll create a basic representation
             // This is a simplified approach - for complex SVGs, you might need ImageMagick
-            
+
             // Try to extract basic shapes and colors from SVG
             $this->renderBasicSvgElements($image, $svgContent, $width, $height);
-            
+
             // Convert to PNG
             ob_start();
             imagepng($image);
             $pngData = ob_get_contents();
             ob_end_clean();
-            
+
             // Clean up
             imagedestroy($image);
-            
+
             Log::info("SVG converted to PNG: {$width}x{$height}");
-            
+
             return $pngData;
         } catch (\Exception $e) {
             Log::warning('Failed to convert SVG to PNG: ' . $e->getMessage());
@@ -763,14 +1332,14 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                     $rectWidth = intval($match[3]);
                     $rectHeight = intval($match[4]);
                     $color = $this->parseColor($match[5]);
-                    
+
                     if ($color !== null) {
                         $gdColor = imagecolorallocate($image, $color[0], $color[1], $color[2]);
                         imagefilledrectangle($image, $x, $y, $x + $rectWidth, $y + $rectHeight, $gdColor);
                     }
                 }
             }
-            
+
             // Extract and render circles
             if (preg_match_all('/<circle[^>]*cx=["\'](\d+)["\'][^>]*cy=["\'](\d+)["\'][^>]*r=["\'](\d+)["\'][^>]*fill=["\']([^"\']+)["\'][^>]*\/?>/', $svgContent, $matches, PREG_SET_ORDER)) {
                 foreach ($matches as $match) {
@@ -778,7 +1347,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                     $cy = intval($match[2]);
                     $r = intval($match[3]);
                     $color = $this->parseColor($match[4]);
-                    
+
                     if ($color !== null) {
                         $gdColor = imagecolorallocate($image, $color[0], $color[1], $color[2]);
                         imagefilledellipse($image, $cx, $cy, $r * 2, $r * 2, $gdColor);
@@ -796,7 +1365,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
     private function parseColor(string $color): ?array
     {
         $color = trim($color);
-        
+
         // Handle hex colors
         if (str_starts_with($color, '#')) {
             $hex = ltrim($color, '#');
@@ -808,7 +1377,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
                 ];
             }
         }
-        
+
         // Handle named colors
         $namedColors = [
             'red' => [255, 0, 0],
@@ -820,7 +1389,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
             'cyan' => [0, 255, 255],
             'magenta' => [255, 0, 255],
         ];
-        
+
         return $namedColors[strtolower($color)] ?? null;
     }
 
@@ -832,7 +1401,7 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         try {
             // Convert local file path to URL if needed
             $imageUrl = $this->convertLocalPathToUrl($imagePath);
-            
+
             // Use generateResponse with image analysis
             return $this->generateResponse($prompt, 'esr', [], 'persona', [$imageUrl]);
         } catch (\Exception $e) {
@@ -861,19 +1430,210 @@ Ketika menganalisis gambar, berikan detail tentang orientasi, kondisi struktur, 
         if (str_contains($localPath, 'temp/')) {
             $filename = basename($localPath);
             $publicPath = storage_path('app/public/temp/' . $filename);
-            
+
             // Create directory if not exists
             if (!file_exists(dirname($publicPath))) {
                 mkdir(dirname($publicPath), 0755, true);
             }
-            
+
             // Copy file to public storage
             copy($localPath, $publicPath);
-            
+
             return url('storage/temp/' . $filename);
         }
 
         // Default: assume it's already accessible
         return $localPath;
+    }
+
+    /**
+     * Extract token usage information from Gemini API response
+     */
+    private function extractTokenUsage(array $responseData, string $inputText, string $outputText): array
+    {
+        // Try to get token usage from API response if available
+        $inputTokens = $responseData['usageMetadata']['promptTokenCount'] ?? null;
+        $outputTokens = $responseData['usageMetadata']['candidatesTokenCount'] ?? null;
+        $totalTokens = $responseData['usageMetadata']['totalTokenCount'] ?? null;
+
+        // If API doesn't provide token counts, estimate them
+        if ($inputTokens === null || $outputTokens === null) {
+            $inputTokens = $this->estimateTokenCount($inputText);
+            $outputTokens = $this->estimateTokenCount($outputText);
+            $totalTokens = $inputTokens + $outputTokens;
+        }
+
+        return [
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'total_tokens' => $totalTokens,
+        ];
+    }
+
+    /**
+     * Estimate token count for text (rough approximation)
+     * Generally, 1 token ≈ 4 characters for English, but can vary for Indonesian
+     */
+    private function estimateTokenCount(string $text): int
+    {
+        // Remove extra whitespace and count characters
+        $cleanText = trim(preg_replace('/\s+/', ' ', $text));
+        $charCount = mb_strlen($cleanText, 'UTF-8');
+
+        // Rough estimation: 1 token ≈ 3.5 characters for Indonesian text
+        return max(1, (int) ceil($charCount / 3.5));
+    }
+
+    /**
+     * Detect if the message is a text-to-image prompt
+     */
+    private function isTextToImagePrompt(string $message): bool
+    {
+        Log::info('Smart image intent detection', [
+            'original_message' => $message
+        ]);
+
+        // First try enhanced keyword detection
+        if ($this->enhancedKeywordDetection($message)) {
+            Log::info('Enhanced keyword detection matched', ['message' => $message]);
+            return true;
+        }
+
+        // Then try AI-powered detection for edge cases
+        return $this->aiIntentDetection($message);
+    }
+
+    /**
+     * Detect if the message is an image editing request
+     */
+    public function isImageEditingPrompt(string $message): bool
+    {
+        Log::info('Image editing intent detection', [
+            'original_message' => $message
+        ]);
+
+        return $this->imageEditingKeywordDetection($message);
+    }
+
+    private function imageEditingKeywordDetection(string $message): bool
+    {
+        $message = strtolower($message);
+
+        // Patterns for image editing requests
+        $patterns = [
+            // Simple edit requests
+            '/\bedit\s+(this\s+)?(photo|image|picture|foto|gambar)/i',
+            '/\b(photo|image|picture|foto|gambar)\s+edit/i',
+            
+            // Direct editing requests
+            '/\b(edit|ubah|ganti|modifikasi|perbaiki|revisi)\s+.*\b(gambar|foto|image|picture)\b/i',
+            '/\b(gambar|foto|image)\s+.*\b(edit|ubah|ganti|modifikasi|perbaiki|revisi)\b/i',
+            
+            // Specific editing actions
+            '/\b(hapus|hilangkan|remove|delete)\s+.*\b(dari|di|pada)\s+.*\b(gambar|foto|image)\b/i',
+            '/\b(tambah|tambahin|add|insert)\s+.*\b(ke|di|pada)\s+.*\b(gambar|foto|image)\b/i',
+            '/\b(ganti|ubah|change|replace)\s+.*\b(warna|color|background|latar)\b/i',
+            
+            // Enhancement requests
+            '/\b(perbaiki|enhance|improve|tingkatkan)\s+.*\b(kualitas|quality|resolusi|resolution)\b/i',
+            '/\b(blur|sharpen|brighten|darken|contrast)\b/i',
+            
+            // Style changes
+            '/\b(jadikan|buat|make)\s+.*\b(hitam putih|black white|sepia|vintage)\b/i',
+            '/\b(crop|potong|resize|perbesar|perkecil)\b/i',
+            
+            // Filter requests
+            '/\b(filter|efek|effect)\s+.*\b(gambar|foto|image)\b/i',
+            '/\b(gambar|foto|image)\s+.*\b(filter|efek|effect)\b/i',
+            
+            // Restoration
+            '/\b(restore|pulihkan|perbaiki)\s+.*\b(gambar|foto|image)\s+.*\b(lama|rusak|buram)\b/i'
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function enhancedKeywordDetection(string $message): bool
+    {
+        $message = strtolower($message);
+
+        // Enhanced patterns that cover more natural language
+        $patterns = [
+            // Direct image requests
+            '/\b(buat|buatkan|bikin|bikinkan|generate|create|make)\s+.*\b(gambar|image|picture|foto|ilustrasi)\b/i',
+            '/\bgambarkan\b/i',
+            '/\b(draw|paint|sketch|illustrate|design)\b/i',
+
+            // Visual requests
+            '/\b(lihat|melihat|tunjukkan|tampilkan|perlihatkan)\s+.*\b(gambar|image|picture|visual)\b/i',
+            '/\b(seperti apa|bagaimana bentuk|bagaimana rupa)\b/i',
+            '/\bvisualisasi\b/i',
+
+            // Want to see something
+            '/\b(ingin|mau|pengen)\s+.*\b(lihat|melihat)\s+.*\b(gambar|image)\b/i',
+            '/\bshow me\b/i',
+
+            // Creative requests
+            '/\b(seni|art|kreasi|desain)\b/i'
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function aiIntentDetection(string $message): bool
+    {
+        try {
+            // Simple prompt for AI detection
+            $prompt = "Is this a request to generate/create/show an image? Answer only YES or NO.\n\nMessage: \"$message\"";
+
+            $response = Http::timeout(5)->withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . config('ai.gemini_api_key'), [
+                'contents' => [
+                    [
+                        'parts' => [
+                            ['text' => $prompt]
+                        ]
+                    ]
+                ],
+                'generationConfig' => [
+                    'temperature' => 0,
+                    'maxOutputTokens' => 5
+                ]
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $aiResponse = trim($data['candidates'][0]['content']['parts'][0]['text'] ?? '');
+                $isImageIntent = stripos($aiResponse, 'YES') !== false;
+
+                Log::info('AI intent detection result', [
+                    'message' => $message,
+                    'ai_response' => $aiResponse,
+                    'is_image_intent' => $isImageIntent
+                ]);
+
+                return $isImageIntent;
+            }
+        } catch (\Exception $e) {
+            Log::warning('AI intent detection failed', [
+                'error' => $e->getMessage(),
+                'message' => $message
+            ]);
+        }
+
+        return false;
     }
 }

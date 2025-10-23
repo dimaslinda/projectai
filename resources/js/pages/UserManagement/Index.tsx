@@ -76,7 +76,7 @@ export default function Index({ users }: Props) {
     };
 
     return (
-        <AppLayout>
+        <AppLayout hideChangelogBanner={true}>
             <Head title="User Management" />
 
             <div className="space-y-6 p-6">

@@ -21,6 +21,9 @@ class ChatHistory extends Model
         'message',
         'sender',
         'metadata',
+        'input_tokens',
+        'output_tokens',
+        'total_tokens',
     ];
 
     /**

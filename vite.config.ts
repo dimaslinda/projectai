@@ -23,15 +23,15 @@ export default defineConfig({
     ],
     server: {
         host: 'projectai.test',
-        port: 5173,
+        port: 5176,
         cors: true,
         strictPort: false,
         hmr: {
             host: 'projectai.test',
             protocol: 'wss',
-            port: 5173,
+            port: 5176,
         },
-        origin: 'https://projectai.test:5173',
+        origin: 'https://projectai.test:5176',
     },
     esbuild: {
         jsx: 'automatic',
