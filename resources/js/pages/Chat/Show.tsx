@@ -641,7 +641,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                 <div
                     ref={chatContainerRef}
                     onScroll={handleScroll}
-                    className="flex-1 space-y-6 overflow-y-auto bg-gradient-to-b from-gray-50/50 to-white p-3 dark:from-gray-900/50 dark:to-gray-950"
+                    className="flex-1 space-y-6 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-gray-50/50 to-white p-3 dark:from-gray-900/50 dark:to-gray-950"
                 >
                     {session.chat_histories.length === 0 ? (
                         <div className="flex h-full flex-col items-center justify-center text-center">
@@ -686,7 +686,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                 )}
                             </div>
 
-                            <div className="max-w-[75%]">
+                            <div className="min-w-0 max-w-[75%]">
                                 <div className="rounded-2xl border border-border bg-card p-4 shadow-lg shadow-black/5 transition-all duration-200 dark:shadow-black/20">
                                     <div className="space-y-3">
                                         {streamingMessage ? (
@@ -827,7 +827,11 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                             {/* Mobile-First: Model Selector on top */}
                             <div className="flex items-center justify-between gap-3 sm:hidden">
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Model:</span>
-                                <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isSubmitting}>
+                                <Select
+                                    value={selectedModel}
+                                    onValueChange={(v) => setSelectedModel(v as 'gemini-2.5-pro' | 'gemini-2.5-flash-image')}
+                                    disabled={isSubmitting}
+                                >
                                     <SelectTrigger className="h-9 w-auto min-w-[120px] max-w-[160px] rounded-lg border-gray-200 bg-white text-sm shadow-sm transition-all duration-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800">
                                         <SelectValue placeholder="Pilih Model" />
                                     </SelectTrigger>
@@ -885,7 +889,11 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
 
                                 {/* Desktop Model Selector - hidden on mobile */}
                                 <div className="hidden shrink-0 sm:block">
-                                    <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isSubmitting}>
+                                    <Select
+                                        value={selectedModel}
+                                        onValueChange={(v) => setSelectedModel(v as 'gemini-2.5-pro' | 'gemini-2.5-flash-image')}
+                                        disabled={isSubmitting}
+                                    >
                                         <SelectTrigger className="h-10 w-auto min-w-[140px] max-w-[200px] rounded-xl border-gray-200 bg-white text-sm shadow-sm transition-all duration-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-800">
                                             <SelectValue placeholder="Pilih Model" />
                                         </SelectTrigger>

@@ -84,20 +84,23 @@ class ChangelogNotificationController extends Controller
     public function getNotificationStatus(Request $request): JsonResponse
     {
         $user = $request->user();
-        
-        // Get the latest published changelog that user hasn't viewed
-        $latestUnreadChangelog = Changelog::where('is_published', true)
-            ->whereNotIn('id', function ($query) use ($user) {
-                $query->select('changelog_id')
-                      ->from('user_changelog_views')
-                      ->where('user_id', $user->id);
-            })
+
+        // Always get the latest published changelog (global latest)
+        $latestPublished = Changelog::where('is_published', true)
             ->orderBy('created_at', 'desc')
             ->first();
 
+        // Determine unread state based on whether the user has viewed the latest published changelog
+        $hasUnread = false;
+        if ($latestPublished) {
+            $hasUnread = !UserChangelogView::where('user_id', $user->id)
+                ->where('changelog_id', $latestPublished->id)
+                ->exists();
+        }
+
         return response()->json([
-            'has_unread' => $latestUnreadChangelog !== null,
-            'latest_changelog' => $latestUnreadChangelog,
+            'has_unread' => $hasUnread,
+            'latest_changelog' => $latestPublished,
         ]);
     }
 }

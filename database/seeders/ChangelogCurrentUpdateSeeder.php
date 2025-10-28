@@ -23,34 +23,23 @@ class ChangelogCurrentUpdateSeeder extends Seeder
         }
 
         $changelog = [
-            'version' => 'v1.1.0',
+            'version' => 'v1.1.1',
             'release_date' => now()->format('Y-m-d'),
-            'type' => 'major',
-            'title' => 'Perbaikan Fitur Pengeditan Gambar AI & Peningkatan Sistem Pelaporan',
-            'description' => 'Update besar yang memperbaiki fitur pengeditan gambar AI agar dapat menghasilkan gambar yang diedit secara langsung, plus implementasi sistem pelaporan penggunaan token AI yang komprehensif dengan dashboard analitik dan visualisasi data real-time.',
+            'type' => 'patch',
+            'title' => 'Perbaikan UI Chat & Notifikasi Changelog (Terbaru Saja)',
+            'description' => 'Peningkatan pengalaman pengguna: pesan dan blok kode kini tampil rapi tanpa keluar batas, dan notifikasi changelog hanya menampilkan update terbaru yang relevan.',
             'changes' => [
-                '🎨 PERBAIKAN BESAR: Fitur pengeditan gambar AI sekarang dapat menghasilkan gambar yang diedit secara langsung',
-                '✨ Upload gambar dan berikan instruksi editing (contoh: "ubah menjadi hitam putih", "hapus background", "ganti warna")',
-                '🖼️ AI akan menghasilkan gambar hasil editing yang dapat langsung diunduh dan digunakan',
-                '🔧 Memperbaiki error "This model only supports text output" pada fitur editing gambar',
-                '📊 Menambahkan sistem tracking penggunaan token AI untuk monitoring konsumsi',
-                '📈 Implementasi widget laporan pengguna dengan grafik interaktif di dashboard',
-                '🥧 Menambahkan visualisasi penggunaan token per persona dengan diagram pie',
-                '📉 Implementasi grafik tren penggunaan token harian',
-                '📋 Menambahkan kartu statistik penggunaan token (total, rata-rata, efisiensi)',
-                '🎯 Perbaikan UI/UX banner notifikasi dengan positioning yang lebih baik',
-                '🛡️ Memperbaiki masalah error pada komponen chat yang dapat menyebabkan aplikasi crash'
+                '💬 Pesan AI dan teks panjang kini terbungkus rapi (tidak keluar batas).',
+                '🧩 Blok kode panjang dapat digulir secara horizontal jika diperlukan.',
+                '🔗 Teks, URL, dan kode inline otomatis terpecah baris agar tetap terbaca.',
+                '🔔 Notifikasi changelog di lonceng hanya menampilkan satu update terbaru.',
+                '🪧 Banner changelog di dashboard hanya muncul untuk update terbaru yang belum dilihat.',
+                '✅ Tombol “Tandai dibaca” tersedia langsung dari notifikasi terbaru.',
+                '⚙️ Stabilitas pemilihan model di halaman chat lebih baik.',
+                '📱 Peningkatan responsivitas di beberapa komponen untuk kenyamanan penggunaan.'
             ],
-            'technical_notes' => [
-                'Fitur pengeditan gambar kini menggunakan model Gemini 2.5 Flash Image yang mendukung text-and-image-to-image generation',
-                'Sistem dapat memproses berbagai jenis instruksi editing: perubahan warna, penghapusan objek, penambahan elemen, filter, dan enhancement',
-                'Gambar hasil editing disimpan secara otomatis dan dapat diakses melalui URL yang aman',
-                'Sistem tracking token terintegrasi dengan database untuk akurasi data real-time',
-                'Widget laporan responsif dan kompatibel dengan berbagai ukuran layar',
-                'Notifikasi changelog kini dapat diakses dari semua halaman aplikasi',
-                'Peningkatan stabilitas aplikasi dengan perbaikan error handling pada komponen chat',
-                'Optimasi performa untuk pengalaman pengguna yang lebih lancar'
-            ],
+            // Tidak menyertakan catatan teknis, fokus pada informasi untuk pengguna umum
+            'technical_notes' => [],
             'is_published' => true,
             'created_by' => $superadmin->id,
         ];

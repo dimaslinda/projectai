@@ -76,16 +76,25 @@ const CodeBlock: React.FC<CodeBlockProps> = memo(({ language, code }) => {
                     </Tooltip>
                 </TooltipProvider>
             </div>
-            <div className="relative overflow-hidden rounded-b-xl border-x border-b border-gray-700 shadow-lg">
+            <div className="relative overflow-x-auto rounded-b-xl border-x border-b border-gray-700 shadow-lg">
                 <SyntaxHighlighter
                     language={language || 'text'}
                     style={oneDark}
+                    wrapLongLines
                     customStyle={{
                         margin: 0,
                         borderRadius: 0,
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                         fontSize: '14px',
                         lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                    }}
+                    codeTagProps={{
+                        style: {
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                        },
                     }}
                     showLineNumbers
                     lineNumberStyle={{
@@ -118,7 +127,7 @@ const MessageContent: React.FC<MessageContentProps> = memo(({ content, className
             <div className={`${className} rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20`}>
                 <div className="flex items-start gap-3">
                     <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500 dark:text-red-400" />
-                    <div className="leading-relaxed text-red-700 dark:text-red-300">
+                    <div className="leading-relaxed break-anywhere text-red-700 dark:text-red-300">
                         <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
@@ -135,7 +144,7 @@ const MessageContent: React.FC<MessageContentProps> = memo(({ content, className
     }
 
     return (
-        <div className={className}>
+        <div className={`break-anywhere ${className}`}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -152,7 +161,7 @@ const MessageContent: React.FC<MessageContentProps> = memo(({ content, className
                         // Inline code
                         return (
                             <code
-                                className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                                className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 break-anywhere whitespace-pre-wrap"
                                 {...props}
                             >
                                 {children}
@@ -163,19 +172,19 @@ const MessageContent: React.FC<MessageContentProps> = memo(({ content, className
                     h1: ({ children }) => <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-gray-100">{children}</h1>,
                     h2: ({ children }) => <h2 className="mb-3 text-xl font-semibold text-gray-900 dark:text-gray-100">{children}</h2>,
                     h3: ({ children }) => <h3 className="mb-2 text-lg font-medium text-gray-900 dark:text-gray-100">{children}</h3>,
-                    p: ({ children }) => <p className="mb-3 leading-relaxed text-gray-700 dark:text-gray-300">{children}</p>,
-                    ul: ({ children }) => <ul className="mb-4 ml-6 list-disc space-y-2 text-gray-700 dark:text-gray-300">{children}</ul>,
-                    ol: ({ children }) => <ol className="mb-4 ml-6 list-decimal space-y-2 text-gray-700 dark:text-gray-300">{children}</ol>,
-                    li: ({ children }) => <li className="pl-2 leading-relaxed">{children}</li>,
+                    p: ({ children }) => <p className="mb-3 leading-relaxed break-anywhere text-gray-700 dark:text-gray-300">{children}</p>,
+                    ul: ({ children }) => <ul className="mb-4 ml-6 list-disc space-y-2 break-anywhere text-gray-700 dark:text-gray-300">{children}</ul>,
+                    ol: ({ children }) => <ol className="mb-4 ml-6 list-decimal space-y-2 break-anywhere text-gray-700 dark:text-gray-300">{children}</ol>,
+                    li: ({ children }) => <li className="pl-2 leading-relaxed break-anywhere">{children}</li>,
                     strong: ({ children }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
                     em: ({ children }) => <em className="text-gray-800 italic dark:text-gray-200">{children}</em>,
                     blockquote: ({ children }) => (
-                        <blockquote className="my-4 border-l-4 border-gray-300 pl-4 text-gray-600 italic dark:border-gray-600 dark:text-gray-400">
+                        <blockquote className="my-4 border-l-4 border-gray-300 pl-4 text-gray-600 italic break-anywhere dark:border-gray-600 dark:text-gray-400">
                             {children}
                         </blockquote>
                     ),
                     a: ({ href, children }) => (
-                        <a href={href} className="text-blue-600 hover:underline dark:text-blue-400" target="_blank" rel="noopener noreferrer">
+                        <a href={href} className="text-blue-600 hover:underline break-anywhere dark:text-blue-400" target="_blank" rel="noopener noreferrer">
                             {children}
                         </a>
                     ),

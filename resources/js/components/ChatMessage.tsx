@@ -42,7 +42,7 @@ const ChatMessage = memo(({ chat, sessionPersona, sessionChatType, formatTime }:
                 </div>
             )}
 
-            <div className={`max-w-[75%] ${chat.sender === 'user' ? 'order-1' : ''}`}>
+            <div className={`min-w-0 max-w-[75%] ${chat.sender === 'user' ? 'order-1' : ''}`}>
                 <div
                     className={`rounded-2xl border p-4 shadow-lg shadow-black/5 transition-all duration-200 dark:shadow-black/20 ${
                         chat.sender === 'user'
@@ -85,9 +85,9 @@ const ChatMessage = memo(({ chat, sessionPersona, sessionChatType, formatTime }:
                             )}
                         <div className="text-sm leading-relaxed">
                             {chat.sender === 'user' ? (
-                                <div className="break-words whitespace-pre-wrap">{chat.message}</div>
+                                <div className="break-anywhere whitespace-pre-wrap">{chat.message}</div>
                             ) : (
-                                <MessageContent content={chat.message} className="text-sm leading-relaxed" />
+                                <MessageContent content={chat.message} className="text-sm leading-relaxed break-anywhere" />
                             )}
                         </div>
 

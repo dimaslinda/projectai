@@ -139,3 +139,14 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Utility: allow breaking long words/URLs anywhere to avoid overflow */
+.break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Optional: ensure flex/grid children can shrink and wrap */
+.min-w-0-child > * {
+    min-width: 0;
+}

@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import axios from 'axios';
-import { Bell, X } from 'lucide-react';
+import { Bell, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ChangelogModal from './ChangelogModal';
 
@@ -15,32 +15,32 @@ interface Changelog {
     created_at: string;
 }
 
-interface UnreadChangelogs {
-    unread_count: number;
-    changelogs: Changelog[];
+interface NotificationStatus {
+    has_unread: boolean;
+    latest_changelog: Changelog | null;
 }
 
 export default function ChangelogNotificationBadge() {
-    const [unreadData, setUnreadData] = useState<UnreadChangelogs | null>(null);
+    const [status, setStatus] = useState<NotificationStatus | null>(null);
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedChangelog, setSelectedChangelog] = useState<Changelog | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
-        fetchUnreadChangelogs();
+        fetchStatus();
 
         // Poll for updates every 5 minutes
-        const interval = setInterval(fetchUnreadChangelogs, 5 * 60 * 1000);
+        const interval = setInterval(fetchStatus, 5 * 60 * 1000);
         return () => clearInterval(interval);
     }, []);
 
-    const fetchUnreadChangelogs = async () => {
+    const fetchStatus = async () => {
         try {
-            const response = await axios.get('/api/changelog-notifications/unread');
-            setUnreadData(response.data);
+            const response = await axios.get('/api/changelog-notifications/status');
+            setStatus(response.data);
         } catch (error) {
-            console.error('Error fetching unread changelogs:', error);
+            console.error('Error fetching changelog status:', error);
         } finally {
             setIsLoading(false);
         }
@@ -49,20 +49,10 @@ export default function ChangelogNotificationBadge() {
     const markAsRead = async (changelogId: number) => {
         try {
             await axios.post(`/api/changelog-notifications/mark-read/${changelogId}`);
-            // Refresh unread data
-            fetchUnreadChangelogs();
+            // Refresh status after marking read
+            fetchStatus();
         } catch (error) {
             console.error('Error marking changelog as read:', error);
-        }
-    };
-
-    const markAllAsRead = async () => {
-        try {
-            await axios.post('/api/changelog-notifications/mark-all-read');
-            setUnreadData({ unread_count: 0, changelogs: [] });
-            setIsOpen(false);
-        } catch (error) {
-            console.error('Error marking all changelogs as read:', error);
         }
     };
 
@@ -93,7 +83,7 @@ export default function ChangelogNotificationBadge() {
         }
     };
 
-    if (isLoading || !unreadData || unreadData.unread_count === 0) {
+    if (isLoading || !status || !status.has_unread || !status.latest_changelog) {
         return (
             <Button variant="ghost" size="sm" className="relative">
                 <Bell className="h-4 w-4" />
@@ -107,12 +97,12 @@ export default function ChangelogNotificationBadge() {
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="relative">
                         <Bell className="h-4 w-4" />
-                        {unreadData.unread_count > 0 && (
+                        {status.has_unread && (
                             <Badge
                                 variant="destructive"
                                 className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs"
                             >
-                                {unreadData.unread_count > 9 ? '9+' : unreadData.unread_count}
+                                1
                             </Badge>
                         )}
                     </Button>
@@ -121,56 +111,44 @@ export default function ChangelogNotificationBadge() {
                     <div className="border-b border-gray-200 p-4 dark:border-gray-700">
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Update Terbaru</h3>
-                            {unreadData.unread_count > 1 && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={markAllAsRead}
-                                    className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                                >
-                                    Tandai Semua Dibaca
-                                </Button>
-                            )}
                         </div>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
-                        {unreadData.changelogs.map((changelog) => (
-                            <div
-                                key={changelog.id}
-                                className="border-b border-gray-200 p-4 last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700"
-                            >
+                        {status.latest_changelog && (
+                            <div className="border-b border-gray-200 p-4 last:border-b-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700">
                                 <div className="flex items-start justify-between">
-                                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleChangelogClick(changelog)}>
+                                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleChangelogClick(status.latest_changelog!)}>
                                         <div className="mb-1 flex items-center space-x-2">
                                             <Badge
                                                 variant="outline"
-                                                className={`border-gray-300 text-xs dark:border-gray-600 ${getTypeColor(changelog.type)}`}
+                                                className={`border-gray-300 text-xs dark:border-gray-600 ${getTypeColor(status.latest_changelog.type)}`}
                                             >
-                                                {changelog.version}
+                                                {status.latest_changelog.version}
                                             </Badge>
                                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                                                {new Date(changelog.created_at).toLocaleDateString('id-ID')}
+                                                {new Date(status.latest_changelog.created_at).toLocaleDateString('id-ID')}
                                             </span>
                                         </div>
                                         <h4 className="mb-1 text-sm font-medium text-gray-900 hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400">
-                                            {changelog.title}
+                                            {status.latest_changelog.title}
                                         </h4>
-                                        <p className="line-clamp-2 text-xs text-gray-600 dark:text-gray-300">{changelog.description}</p>
+                                        <p className="line-clamp-2 text-xs text-gray-600 dark:text-gray-300">{status.latest_changelog.description}</p>
                                     </div>
                                     <Button
                                         variant="ghost"
                                         size="sm"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            markAsRead(changelog.id);
+                                            markAsRead(status.latest_changelog!.id);
                                         }}
                                         className="ml-2 flex-shrink-0 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                                        title="Tandai dibaca"
                                     >
-                                        <X className="h-3 w-3" />
+                                        <Check className="h-3 w-3" />
                                     </Button>
                                 </div>
                             </div>
-                        ))}
+                        )}
                     </div>
                     <div className="border-t border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
                         <Button
