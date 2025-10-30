@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, Legend } from 'recharts';
+import { Tooltip as UITooltip, TooltipTrigger as UITooltipTrigger, TooltipContent as UITooltipContent } from '@/components/ui/tooltip';
 import { Users, UserCheck, UserX, TrendingUp, Crown, Wrench, MessageSquare, Zap } from 'lucide-react';
 import { useState } from 'react';
 
@@ -209,30 +210,30 @@ export function UserReportWidget({
                     {/* Overview Tab */}
                     <TabsContent value="overview" className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-3">
-                            <div className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 border border-blue-200 dark:border-blue-800">
+                            <div className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-3 sm:p-4 border border-blue-200 dark:border-blue-800">
                                 <div className="flex items-center gap-2">
                                     <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                     <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Total Pengguna</span>
                                 </div>
-                                <div className="mt-2 text-2xl font-bold text-blue-900 dark:text-blue-100">{totalUsers.toLocaleString()}</div>
+                                <div className="mt-2 text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">{totalUsers.toLocaleString()}</div>
                                 <div className="text-xs text-blue-700 dark:text-blue-300">Terdaftar di sistem</div>
                             </div>
-                            <div className="rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-4 border border-green-200 dark:border-green-800">
+                            <div className="rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-3 sm:p-4 border border-green-200 dark:border-green-800">
                                 <div className="flex items-center gap-2">
                                     <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
                                     <span className="text-sm font-medium text-green-900 dark:text-green-100">Pengguna Aktif</span>
                                 </div>
-                                <div className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">{activeUsers.toLocaleString()}</div>
+                                <div className="mt-2 text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">{activeUsers.toLocaleString()}</div>
                                 <div className="text-xs text-green-700 dark:text-green-300">
                                     {activityRate.toFixed(1)}% dari total pengguna
                                 </div>
                             </div>
-                            <div className="rounded-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-4 border border-red-200 dark:border-red-800">
+                            <div className="rounded-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 p-3 sm:p-4 border border-red-200 dark:border-red-800">
                                 <div className="flex items-center gap-2">
                                     <UserX className="h-4 w-4 text-red-600 dark:text-red-400" />
                                     <span className="text-sm font-medium text-red-900 dark:text-red-100">Pengguna Tidak Aktif</span>
                                 </div>
-                                <div className="mt-2 text-2xl font-bold text-red-900 dark:text-red-100">{inactiveUsers.toLocaleString()}</div>
+                                <div className="mt-2 text-xl sm:text-2xl font-bold text-red-900 dark:text-red-100">{inactiveUsers.toLocaleString()}</div>
                                 <div className="text-xs text-red-700 dark:text-red-300">
                                     {inactivityRate.toFixed(1)}% dari total pengguna
                                 </div>
@@ -293,13 +294,16 @@ export function UserReportWidget({
                                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                                             <XAxis 
                                                 dataKey="persona" 
-                                                fontSize={12}
+                                                fontSize={10}
+                                                tickMargin={8}
+                                                interval="preserveStartEnd"
                                                 tickLine={false}
                                                 axisLine={false}
                                                 className="fill-muted-foreground"
                                             />
                                             <YAxis 
-                                                fontSize={12}
+                                                fontSize={10}
+                                                tickMargin={6}
                                                 tickLine={false}
                                                 axisLine={false}
                                                 tickFormatter={(value) => value.toLocaleString()}
@@ -336,16 +340,16 @@ export function UserReportWidget({
                         {/* Persona Stats Table */}
                         <div className="space-y-2">
                             <h4 className="text-sm font-medium">Detail Statistik per Persona</h4>
-                            <div className="rounded-md border">
-                                <div className="grid grid-cols-5 gap-4 p-4 text-sm font-medium border-b">
+                            <div className="rounded-md border overflow-x-auto">
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm font-medium border-b min-w-[560px]">
                                     <div>Persona</div>
                                     <div>Total Pengguna</div>
-                                    <div>Pengguna Aktif</div>
+                                    <div className="hidden sm:block">Pengguna Aktif</div>
                                     <div>Total Sesi</div>
-                                    <div>Rata-rata Sesi/User</div>
+                                    <div className="hidden sm:block">Rata-rata Sesi/User</div>
                                 </div>
                                 {personaStats.map((stat, index) => (
-                                    <div key={index} className="grid grid-cols-5 gap-4 p-4 text-sm border-b last:border-b-0">
+                                    <div key={index} className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm border-b last:border-b-0 min-w-[560px]">
                                         <div className="flex items-center gap-2">
                                             <div 
                                                 className="w-3 h-3 rounded-full" 
@@ -354,9 +358,9 @@ export function UserReportWidget({
                                             <span className="capitalize">{stat.persona}</span>
                                         </div>
                                         <div>{stat.userCount.toLocaleString()}</div>
-                                        <div>{stat.activeUsers.toLocaleString()}</div>
+                                        <div className="hidden sm:block">{stat.activeUsers.toLocaleString()}</div>
                                         <div>{stat.totalSessions.toLocaleString()}</div>
-                                        <div>{stat.avgSessionsPerUser.toFixed(1)}</div>
+                                        <div className="hidden sm:block">{stat.avgSessionsPerUser.toFixed(1)}</div>
                                     </div>
                                 ))}
                             </div>
@@ -373,13 +377,15 @@ export function UserReportWidget({
                                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                                         <XAxis 
                                             dataKey="period" 
-                                            fontSize={12}
+                                            fontSize={10}
+                                            tickMargin={8}
+                                            interval="preserveStartEnd"
                                             tickLine={false}
                                             axisLine={false}
                                             className="fill-muted-foreground"
                                         />
                                         <YAxis 
-                                            fontSize={12}
+                                            fontSize={10}
                                             tickLine={false}
                                             axisLine={false}
                                             tickFormatter={(value) => value.toLocaleString()}
@@ -414,17 +420,17 @@ export function UserReportWidget({
                     <TabsContent value="top-users" className="space-y-4">
                         <div className="space-y-2">
                             <h4 className="text-sm font-medium">Top 10 Pengguna Paling Aktif</h4>
-                            <div className="rounded-md border">
-                                <div className="grid grid-cols-6 gap-4 p-4 text-sm font-medium border-b">
+                            <div className="rounded-md border overflow-x-auto">
+                                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm font-medium border-b min-w-[640px]">
                                     <div>Rank</div>
                                     <div>Nama</div>
-                                    <div>Role</div>
-                                    <div>Total Sesi</div>
+                                    <div className="hidden sm:block">Role</div>
+                                    <div className="hidden sm:block">Total Sesi</div>
                                     <div>Total Pesan</div>
-                                    <div>Persona Favorit</div>
+                                    <div className="hidden sm:block">Persona Favorit</div>
                                 </div>
                                 {topUsers.slice(0, 10).map((user, index) => (
-                                    <div key={user.id} className="grid grid-cols-6 gap-4 p-4 text-sm border-b last:border-b-0">
+                                    <div key={user.id} className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm border-b last:border-b-0 min-w-[640px]">
                                         <div className="flex items-center gap-2">
                                             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                                                 index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
@@ -435,14 +441,14 @@ export function UserReportWidget({
                                                 {index + 1}
                                             </div>
                                         </div>
-                                        <div className="font-medium">{user.name}</div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="font-medium truncate min-w-0">{user.name}</div>
+                                        <div className="flex items-center gap-2 hidden sm:flex">
                                             {getRoleIcon(user.role)}
                                             <span className="capitalize">{getRoleLabel(user.role)}</span>
                                         </div>
-                                        <div>{user.totalSessions.toLocaleString()}</div>
+                                        <div className="hidden sm:block">{user.totalSessions.toLocaleString()}</div>
                                         <div>{user.totalMessages.toLocaleString()}</div>
-                                        <div className="capitalize">{user.favoritePersona || 'Global'}</div>
+                                        <div className="capitalize hidden sm:block">{user.favoritePersona || 'Global'}</div>
                                     </div>
                                 ))}
                             </div>
@@ -455,36 +461,36 @@ export function UserReportWidget({
                             <>
                                 {/* Token Overview */}
                                 <div className="grid gap-4 md:grid-cols-3">
-                                    <div className="rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 p-4 border border-purple-200 dark:border-purple-800">
+                                    <div className="rounded-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 p-3 sm:p-4 border border-purple-200 dark:border-purple-800">
                                         <div className="flex items-center gap-2">
                                             <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                                             <span className="text-sm font-medium text-purple-900 dark:text-purple-100">Total Token</span>
                                         </div>
-                                        <div className="mt-2 text-2xl font-bold text-purple-900 dark:text-purple-100">
+                                        <div className="mt-2 text-xl sm:text-2xl font-bold text-purple-900 dark:text-purple-100">
                                             {tokenUsage.overview.total_tokens.toLocaleString()}
                                         </div>
                                         <div className="text-xs text-purple-700 dark:text-purple-300">
                                             {tokenUsage.overview.period}
                                         </div>
                                     </div>
-                                    <div className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 border border-blue-200 dark:border-blue-800">
+                                    <div className="rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-3 sm:p-4 border border-blue-200 dark:border-blue-800">
                                         <div className="flex items-center gap-2">
                                             <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                             <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Input Token</span>
                                         </div>
-                                        <div className="mt-2 text-2xl font-bold text-blue-900 dark:text-blue-100">
+                                        <div className="mt-2 text-xl sm:text-2xl font-bold text-blue-900 dark:text-blue-100">
                                             {tokenUsage.overview.input_tokens.toLocaleString()}
                                         </div>
                                         <div className="text-xs text-blue-700 dark:text-blue-300">
                                             {((tokenUsage.overview.input_tokens / tokenUsage.overview.total_tokens) * 100).toFixed(1)}% dari total
                                         </div>
                                     </div>
-                                    <div className="rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-4 border border-green-200 dark:border-green-800">
+                                    <div className="rounded-lg bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-3 sm:p-4 border border-green-200 dark:border-green-800">
                                         <div className="flex items-center gap-2">
                                             <MessageSquare className="h-4 w-4 text-green-600 dark:text-green-400" />
                                             <span className="text-sm font-medium text-green-900 dark:text-green-100">Output Token</span>
                                         </div>
-                                        <div className="mt-2 text-2xl font-bold text-green-900 dark:text-green-100">
+                                        <div className="mt-2 text-xl sm:text-2xl font-bold text-green-900 dark:text-green-100">
                                             {tokenUsage.overview.output_tokens.toLocaleString()}
                                         </div>
                                         <div className="text-xs text-green-700 dark:text-green-300">
@@ -497,16 +503,16 @@ export function UserReportWidget({
                                     {/* Top Token Users */}
                                     <div className="space-y-2">
                                         <h4 className="text-sm font-medium">Top 5 Pengguna Token</h4>
-                                        <div className="rounded-md border">
-                                            <div className="grid grid-cols-4 gap-4 p-4 text-sm font-medium border-b">
+                                        <div className="rounded-md border overflow-x-auto">
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm font-medium border-b min-w-[480px]">
                                                 <div>Nama</div>
                                                 <div>Total Token</div>
                                                 <div>Pesan</div>
-                                                <div>Avg/Pesan</div>
+                                                <div className="hidden sm:block">Avg/Pesan</div>
                                             </div>
                                             {tokenUsage.topUsers.slice(0, 5).map((user, index) => (
-                                                <div key={user.id} className="grid grid-cols-4 gap-4 p-4 text-sm border-b last:border-b-0">
-                                                    <div className="flex items-center gap-2">
+                                                <div key={user.id} className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm border-b last:border-b-0 min-w-[480px]">
+                                                    <div className="flex items-center gap-2 min-w-0">
                                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                                                             index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
                                                             index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
@@ -515,11 +521,18 @@ export function UserReportWidget({
                                                         }`}>
                                                             {index + 1}
                                                         </div>
-                                                        <span className="font-medium">{user.name}</span>
+                                                        <UITooltip>
+                                                            <UITooltipTrigger asChild>
+                                                                <span className="font-medium truncate max-w-[180px]">{user.name}</span>
+                                                            </UITooltipTrigger>
+                                                            <UITooltipContent side="top">
+                                                                <p className="max-w-xs break-words">{user.name}</p>
+                                                            </UITooltipContent>
+                                                        </UITooltip>
                                                     </div>
                                                     <div>{user.total_tokens.toLocaleString()}</div>
                                                     <div>{user.message_count.toLocaleString()}</div>
-                                                    <div>{Math.round(user.avg_tokens_per_message)}</div>
+                                                    <div className="hidden sm:block">{Math.round(user.avg_tokens_per_message)}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -530,21 +543,24 @@ export function UserReportWidget({
                                         <h4 className="text-sm font-medium">Penggunaan Token per Persona</h4>
                                         <div className="h-[300px]">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={tokenUsage.byPersona.map(item => ({
-                                                    ...item,
-                                                    personaDisplay: getPersonaDisplayName(item.persona),
-                                                    fill: getPersonaColor(item.persona)
-                                                }))}>
+                                        <BarChart data={tokenUsage.byPersona.map(item => ({
+                                                ...item,
+                                                personaDisplay: getPersonaDisplayName(item.persona),
+                                                fill: getPersonaColor(item.persona)
+                                            }))}>
                                                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                                                     <XAxis 
                                                         dataKey="personaDisplay" 
                                                         className="fill-muted-foreground"
-                                                        fontSize={12}
+                                                        fontSize={10}
+                                                        tickMargin={8}
+                                                        interval="preserveStartEnd"
                                                     />
                                                     <YAxis 
                                                         tickFormatter={(value) => value.toLocaleString()}
                                                         className="fill-muted-foreground"
-                                                        fontSize={12}
+                                                        fontSize={10}
+                                                        tickMargin={6}
                                                     />
                                                     <Tooltip 
                                                         formatter={(value: number, name: string) => [
@@ -572,7 +588,7 @@ export function UserReportWidget({
                                                     <Legend 
                                                         wrapperStyle={{
                                                             paddingTop: '20px',
-                                                            fontSize: '12px'
+                                                            fontSize: '11px'
                                                         }}
                                                         formatter={(value) => value === 'total_tokens' ? 'Total Token' : value}
                                                     />
@@ -600,12 +616,15 @@ export function UserReportWidget({
                                                 <XAxis 
                                                     dataKey="day" 
                                                     className="fill-muted-foreground"
-                                                    fontSize={12}
+                                                    fontSize={10}
+                                                    tickMargin={8}
+                                                    interval="preserveStartEnd"
                                                 />
                                                 <YAxis 
                                                     tickFormatter={(value) => value.toLocaleString()}
                                                     className="fill-muted-foreground"
-                                                    fontSize={12}
+                                                    fontSize={10}
+                                                    tickMargin={6}
                                                 />
                                                 <Tooltip 
                                                     formatter={(value: number) => [value.toLocaleString(), 'Token']}
