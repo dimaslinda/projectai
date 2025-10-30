@@ -98,6 +98,23 @@ const getPersonaDisplayName = (persona: string): string => {
     return personaNames[persona] || persona;
 };
 
+// Short display names for compact mobile ticks
+const getPersonaShortDisplay = (name: string): string => {
+    const map: Record<string, string> = {
+        'Global Chat': 'Global',
+        'Engineer': 'Eng',
+        'Drafter': 'Drafter',
+        'ESR (Tower Survey)': 'ESR',
+        'Human Resources': 'HR',
+        'Finance': 'Finance',
+        'Marketing': 'Mkt',
+        'Sales': 'Sales',
+        'Operations': 'Ops',
+        'Legal': 'Legal'
+    };
+    return map[name] || name;
+};
+
 // Helper function to get color for persona
 const getPersonaColor = (persona: string): string => {
     const personaColors: Record<string, string> = {
@@ -126,15 +143,15 @@ interface UserReportWidgetProps {
     isLoading?: boolean;
 }
 
-export function UserReportWidget({ 
-    personaStats, 
-    topUsers, 
-    userGrowth, 
-    totalUsers, 
-    activeUsers, 
+export function UserReportWidget({
+    personaStats,
+    topUsers,
+    userGrowth,
+    totalUsers,
+    activeUsers,
     inactiveUsers,
     tokenUsage,
-    isLoading = false 
+    isLoading = false
 }: UserReportWidgetProps) {
     const [selectedTab, setSelectedTab] = useState('overview');
 
@@ -199,12 +216,12 @@ export function UserReportWidget({
             </CardHeader>
             <CardContent>
                 <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-5">
-                        <TabsTrigger value="overview">Overview</TabsTrigger>
-                        <TabsTrigger value="persona">Per Persona</TabsTrigger>
-                        <TabsTrigger value="growth">Pertumbuhan</TabsTrigger>
-                        <TabsTrigger value="top-users">Top Users</TabsTrigger>
-                        <TabsTrigger value="token-usage">Token Usage</TabsTrigger>
+                    <TabsList className="flex w-full items-center gap-2 overflow-x-auto whitespace-nowrap p-1">
+                        <TabsTrigger className="shrink-0 px-3 py-1.5 text-xs sm:text-sm" value="overview">Overview</TabsTrigger>
+                        <TabsTrigger className="shrink-0 px-3 py-1.5 text-xs sm:text-sm" value="persona">Per Persona</TabsTrigger>
+                        <TabsTrigger className="shrink-0 px-3 py-1.5 text-xs sm:text-sm" value="growth">Pertumbuhan</TabsTrigger>
+                        <TabsTrigger className="shrink-0 px-3 py-1.5 text-xs sm:text-sm" value="top-users">Top Users</TabsTrigger>
+                        <TabsTrigger className="shrink-0 px-3 py-1.5 text-xs sm:text-sm" value="token-usage">Token Usage</TabsTrigger>
                     </TabsList>
 
                     {/* Overview Tab */}
@@ -268,7 +285,7 @@ export function UserReportWidget({
                                                 cx="50%"
                                                 cy="50%"
                                                 labelLine={false}
-                                                label={({ persona, userCount, percent }: PieChartLabelProps) => 
+                                                label={({ persona, userCount, percent }: PieChartLabelProps) =>
                                                     `${persona || ''}: ${userCount || 0} (${((percent || 0) * 100).toFixed(0)}%)`
                                                 }
                                                 outerRadius={80}
@@ -292,8 +309,8 @@ export function UserReportWidget({
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={personaStats}>
                                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                            <XAxis 
-                                                dataKey="persona" 
+                                            <XAxis
+                                                dataKey="persona"
                                                 fontSize={10}
                                                 tickMargin={8}
                                                 interval="preserveStartEnd"
@@ -301,7 +318,7 @@ export function UserReportWidget({
                                                 axisLine={false}
                                                 className="fill-muted-foreground"
                                             />
-                                            <YAxis 
+                                            <YAxis
                                                 fontSize={10}
                                                 tickMargin={6}
                                                 tickLine={false}
@@ -309,25 +326,25 @@ export function UserReportWidget({
                                                 tickFormatter={(value) => value.toLocaleString()}
                                                 className="fill-muted-foreground"
                                             />
-                                            <Tooltip 
+                                            <Tooltip
                                                 formatter={formatTooltipValue}
                                                 labelStyle={{ color: 'hsl(var(--foreground))' }}
-                                                contentStyle={{ 
+                                                contentStyle={{
                                                     backgroundColor: 'hsl(var(--background))',
                                                     border: '1px solid hsl(var(--border))',
                                                     borderRadius: '6px',
                                                     color: 'hsl(var(--foreground))'
                                                 }}
                                             />
-                                            <Bar 
-                                                dataKey="activeUsers" 
-                                                fill="#10b981" 
+                                            <Bar
+                                                dataKey="activeUsers"
+                                                fill="#10b981"
                                                 name="activeUsers"
                                                 radius={[2, 2, 0, 0]}
                                             />
-                                            <Bar 
-                                                dataKey="totalSessions" 
-                                                fill="#3b82f6" 
+                                            <Bar
+                                                dataKey="totalSessions"
+                                                fill="#3b82f6"
                                                 name="totalSessions"
                                                 radius={[2, 2, 0, 0]}
                                             />
@@ -351,8 +368,8 @@ export function UserReportWidget({
                                 {personaStats.map((stat, index) => (
                                     <div key={index} className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm border-b last:border-b-0 min-w-[560px]">
                                         <div className="flex items-center gap-2">
-                                            <div 
-                                                className="w-3 h-3 rounded-full" 
+                                            <div
+                                                className="w-3 h-3 rounded-full"
                                                 style={{ backgroundColor: stat.color }}
                                             />
                                             <span className="capitalize">{stat.persona}</span>
@@ -375,8 +392,8 @@ export function UserReportWidget({
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={userGrowth}>
                                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                        <XAxis 
-                                            dataKey="period" 
+                                        <XAxis
+                                            dataKey="period"
                                             fontSize={10}
                                             tickMargin={8}
                                             interval="preserveStartEnd"
@@ -384,27 +401,27 @@ export function UserReportWidget({
                                             axisLine={false}
                                             className="fill-muted-foreground"
                                         />
-                                        <YAxis 
+                                        <YAxis
                                             fontSize={10}
                                             tickLine={false}
                                             axisLine={false}
                                             tickFormatter={(value) => value.toLocaleString()}
                                             className="fill-muted-foreground"
                                         />
-                                        <Tooltip 
+                                        <Tooltip
                                             formatter={formatTooltipValue}
                                             labelStyle={{ color: 'hsl(var(--foreground))' }}
-                                            contentStyle={{ 
+                                            contentStyle={{
                                                 backgroundColor: 'hsl(var(--background))',
                                                 border: '1px solid hsl(var(--border))',
                                                 borderRadius: '6px',
                                                 color: 'hsl(var(--foreground))'
                                             }}
                                         />
-                                        <Line 
-                                            type="monotone" 
-                                            dataKey="activeUsers" 
-                                            stroke="#10b981" 
+                                        <Line
+                                            type="monotone"
+                                            dataKey="activeUsers"
+                                            stroke="#10b981"
                                             strokeWidth={2}
                                             dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
                                             name="activeUsers"
@@ -504,14 +521,56 @@ export function UserReportWidget({
                                     <div className="space-y-2">
                                         <h4 className="text-sm font-medium">Top 5 Pengguna Token</h4>
                                         <div className="rounded-md border overflow-x-auto">
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm font-medium border-b min-w-[480px]">
+                                            {/* Header hanya ditampilkan di layar >= sm */}
+                                            <div className="hidden sm:grid grid-cols-4 gap-4 p-4 text-sm font-medium border-b">
                                                 <div>Nama</div>
-                                                <div>Total Token</div>
-                                                <div>Pesan</div>
-                                                <div className="hidden sm:block">Avg/Pesan</div>
+                                                <div className="text-right">Total Token</div>
+                                                <div className="text-right">Pesan</div>
+                                                <div className="text-right">Avg/Pesan</div>
                                             </div>
                                             {tokenUsage.topUsers.slice(0, 5).map((user, index) => (
-                                                <div key={user.id} className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 p-3 sm:p-4 text-xs sm:text-sm border-b last:border-b-0 min-w-[480px]">
+                                                <>
+                                                {/* Baris mobile (stacked) */}
+                                                <div key={`m-${user.id}`} className="sm:hidden p-3 text-xs border-b last:border-b-0 space-y-1">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                                                index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                                                                index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' :
+                                                                index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
+                                                                'bg-muted text-muted-foreground'
+                                                            }`}>
+                                                                {index + 1}
+                                                            </div>
+                                                            <UITooltip>
+                                                                <UITooltipTrigger asChild>
+                                                                    <span className="font-medium truncate max-w-[160px]">{user.name}</span>
+                                                                </UITooltipTrigger>
+                                                                <UITooltipContent side="top">
+                                                                    <p className="max-w-xs break-words">{user.name}</p>
+                                                                </UITooltipContent>
+                                                            </UITooltip>
+                                                        </div>
+                                                        <div className="text-right font-semibold">{user.total_tokens.toLocaleString()}</div>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
+                                                        <div>
+                                                            <div className="uppercase">Pesan</div>
+                                                            <div className="text-foreground">{user.message_count.toLocaleString()}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="uppercase">Avg</div>
+                                                            <div className="text-foreground">{Math.round(user.avg_tokens_per_message)}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="uppercase">Token</div>
+                                                            <div className="text-foreground">{user.total_tokens.toLocaleString()}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Baris desktop/tablet */}
+                                                <div key={`d-${user.id}`} className="hidden sm:grid grid-cols-4 gap-4 p-4 text-sm border-b last:border-b-0">
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                                                             index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
@@ -523,17 +582,18 @@ export function UserReportWidget({
                                                         </div>
                                                         <UITooltip>
                                                             <UITooltipTrigger asChild>
-                                                                <span className="font-medium truncate max-w-[180px]">{user.name}</span>
+                                                                <span className="font-medium truncate max-w-[220px]">{user.name}</span>
                                                             </UITooltipTrigger>
                                                             <UITooltipContent side="top">
                                                                 <p className="max-w-xs break-words">{user.name}</p>
                                                             </UITooltipContent>
                                                         </UITooltip>
                                                     </div>
-                                                    <div>{user.total_tokens.toLocaleString()}</div>
-                                                    <div>{user.message_count.toLocaleString()}</div>
-                                                    <div className="hidden sm:block">{Math.round(user.avg_tokens_per_message)}</div>
+                                                    <div className="text-right">{user.total_tokens.toLocaleString()}</div>
+                                                    <div className="text-right">{user.message_count.toLocaleString()}</div>
+                                                    <div className="text-right">{Math.round(user.avg_tokens_per_message)}</div>
                                                 </div>
+                                                </>
                                             ))}
                                         </div>
                                     </div>
@@ -543,36 +603,42 @@ export function UserReportWidget({
                                         <h4 className="text-sm font-medium">Penggunaan Token per Persona</h4>
                                         <div className="h-[300px]">
                                             <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={tokenUsage.byPersona.map(item => ({
-                                                ...item,
-                                                personaDisplay: getPersonaDisplayName(item.persona),
-                                                fill: getPersonaColor(item.persona)
-                                            }))}>
+                                                <BarChart
+                                                    data={tokenUsage.byPersona.map(item => ({
+                                                    ...item,
+                                                    personaDisplay: getPersonaDisplayName(item.persona),
+                                                    fill: getPersonaColor(item.persona)
+                                                }))}
+                                                    margin={{ top: 10, right: 10, left: 6, bottom: 24 }}
+                                                    barSize={28}
+                                                >
                                                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                                    <XAxis 
-                                                        dataKey="personaDisplay" 
+                                                    <XAxis
+                                                        dataKey="personaDisplay"
                                                         className="fill-muted-foreground"
                                                         fontSize={10}
-                                                        tickMargin={8}
+                                                        tickMargin={10}
                                                         interval="preserveStartEnd"
+                                                        angle={-20}
+                                                        tickFormatter={(v) => getPersonaShortDisplay(String(v))}
                                                     />
-                                                    <YAxis 
+                                                    <YAxis
                                                         tickFormatter={(value) => value.toLocaleString()}
                                                         className="fill-muted-foreground"
                                                         fontSize={10}
                                                         tickMargin={6}
                                                     />
-                                                    <Tooltip 
+                                                    <Tooltip
                                                         formatter={(value: number, name: string) => [
-                                                            value.toLocaleString(), 
+                                                            value.toLocaleString(),
                                                             name === 'total_tokens' ? 'Total Token' : name
                                                         ]}
-                                                        labelStyle={{ 
+                                                        labelStyle={{
                                                             color: '#f9fafb',
                                                             fontWeight: 'bold',
                                                             fontSize: '14px'
                                                         }}
-                                                        contentStyle={{ 
+                                                        contentStyle={{
                                                             backgroundColor: '#111827',
                                                             border: '2px solid #374151',
                                                             borderRadius: '8px',
@@ -585,15 +651,15 @@ export function UserReportWidget({
                                                             fontWeight: '500'
                                                         }}
                                                     />
-                                                    <Legend 
+                                                    <Legend
                                                         wrapperStyle={{
                                                             paddingTop: '20px',
                                                             fontSize: '11px'
                                                         }}
                                                         formatter={(value) => value === 'total_tokens' ? 'Total Token' : value}
                                                     />
-                                                    <Bar 
-                                                        dataKey="total_tokens" 
+                                                    <Bar
+                                                        dataKey="total_tokens"
                                                         radius={[4, 4, 0, 0]}
                                                     >
                                                         {tokenUsage.byPersona.map((entry, index) => (
@@ -613,34 +679,34 @@ export function UserReportWidget({
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={tokenUsage.dailyUsage}>
                                                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                                                <XAxis 
-                                                    dataKey="day" 
+                                                <XAxis
+                                                    dataKey="day"
                                                     className="fill-muted-foreground"
                                                     fontSize={10}
                                                     tickMargin={8}
                                                     interval="preserveStartEnd"
                                                 />
-                                                <YAxis 
+                                                <YAxis
                                                     tickFormatter={(value) => value.toLocaleString()}
                                                     className="fill-muted-foreground"
                                                     fontSize={10}
                                                     tickMargin={6}
                                                 />
-                                                <Tooltip 
+                                                <Tooltip
                                                     formatter={(value: number) => [value.toLocaleString(), 'Token']}
                                                     labelFormatter={(label) => `Hari: ${label}`}
                                                     labelStyle={{ color: 'hsl(var(--foreground))' }}
-                                                    contentStyle={{ 
+                                                    contentStyle={{
                                                         backgroundColor: 'hsl(var(--background))',
                                                         border: '1px solid hsl(var(--border))',
                                                         borderRadius: '6px',
                                                         color: 'hsl(var(--foreground))'
                                                     }}
                                                 />
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="tokens" 
-                                                    stroke="#8b5cf6" 
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="tokens"
+                                                    stroke="#8b5cf6"
                                                     strokeWidth={2}
                                                     dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
                                                 />
