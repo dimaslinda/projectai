@@ -5,6 +5,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 use App\Models\User;
 use App\Models\ChatSession;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 // Bootstrap Laravel
 $app = require_once __DIR__ . '/bootstrap/app.php';
@@ -26,34 +27,25 @@ try {
         $needsFix = false;
         $fixes = [];
         
-        // Check if session has proper sharing configuration
-        if ($session->is_shared && empty($session->shared_with_roles)) {
-            $needsFix = true;
-            $fixes[] = "Setting shared_with_roles to owner's role";
-            $session->shared_with_roles = [$session->user->role];
-        }
-        
-        if (!$session->is_shared && !empty($session->shared_with_roles)) {
-            $needsFix = true;
-            $fixes[] = "Clearing shared_with_roles for non-shared session";
-            $session->shared_with_roles = null;
-        }
-        
-        // Ensure all sessions are shared by default (as per current logic)
-        if (!$session->is_shared) {
-            $needsFix = true;
-            $fixes[] = "Enabling sharing and setting shared_with_roles";
-            $session->is_shared = true;
-            $session->shared_with_roles = [$session->user->role];
-        }
-        
-        // Ensure shared_with_roles includes owner's role
-        if ($session->is_shared && !in_array($session->user->role, $session->shared_with_roles ?? [])) {
-            $needsFix = true;
-            $fixes[] = "Adding owner's role to shared_with_roles";
-            $currentRoles = $session->shared_with_roles ?? [];
-            $currentRoles[] = $session->user->role;
-            $session->shared_with_roles = array_unique($currentRoles);
+        // Enforce private-only sessions: disable sharing and clear shared roles
+        // Guard in case sharing columns have been removed by migration
+        $hasIsShared = Schema::hasColumn('chat_sessions', 'is_shared');
+        $hasSharedRoles = Schema::hasColumn('chat_sessions', 'shared_with_roles');
+
+        if ($hasIsShared || $hasSharedRoles) {
+            $isShared = $hasIsShared ? (bool)($session->is_shared ?? false) : false;
+            $sharedRoles = $hasSharedRoles ? $session->shared_with_roles : null;
+
+            if ($isShared || !empty($sharedRoles)) {
+                $needsFix = true;
+                $fixes[] = "Disabling sharing and clearing shared_with_roles";
+                if ($hasIsShared) {
+                    $session->is_shared = false;
+                }
+                if ($hasSharedRoles) {
+                    $session->shared_with_roles = null;
+                }
+            }
         }
         
         if ($needsFix) {

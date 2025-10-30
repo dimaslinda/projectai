@@ -19,23 +19,19 @@ it('can create chat session for streaming test', function () {
     $session = ChatSession::create([
         'user_id' => $this->user->id,
         'title' => 'Test Image Generation Streaming',
-        'persona' => null,
         'chat_type' => 'global',
-        'is_shared' => false,
     ]);
 
     expect($session->user_id)->toBe($this->user->id);
     expect($session->chat_type)->toBe('global');
-    expect($session->is_shared)->toBeFalse();
+    // Private-only policy: sharing fields are not used
 });
 
 it('can test streaming response functionality', function () {
     $session = ChatSession::create([
         'user_id' => $this->user->id,
         'title' => 'Test Image Generation Streaming',
-        'persona' => null,
         'chat_type' => 'global',
-        'is_shared' => false,
     ]);
 
     $controller = new ChatController();

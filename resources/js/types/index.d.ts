@@ -54,8 +54,6 @@ export interface ChatSession {
     persona: string;
     chat_type: 'global' | 'persona';
     description?: string;
-    is_shared: boolean;
-    shared_with_roles?: string[];
     preferred_model?: 'gemini-2.5-pro' | 'gemini-2.5-flash-image';
     last_activity_at: string;
     created_at: string;

@@ -95,8 +95,6 @@ try {
         'chat_type' => 'persona',
         'persona' => $user->role,
         'description' => 'Testing fresh session creation',
-        'is_shared' => true,
-        'shared_with_roles' => [$user->role],
         'last_activity_at' => now(),
     ]);
     
@@ -111,7 +109,8 @@ try {
     
     // Simulate the controller logic
     $sessionFromRoute = ChatSession::findOrFail($newSession->id);
-    $canView = $sessionFromRoute->user_id === $user->id || $sessionFromRoute->canBeViewedByRole($user->role);
+    // Private-only policy: only owners can view
+    $canView = $sessionFromRoute->user_id === $user->id;
     $canEdit = $sessionFromRoute->user_id === $user->id;
     
     echo "Route simulation results:\n";

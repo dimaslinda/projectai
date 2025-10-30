@@ -42,9 +42,7 @@ it('can verify session authorization', function () {
         'user_id' => $this->user->id,
         'title' => 'Test Authorization Session',
         'chat_type' => 'global',
-        'persona' => null,
-        'is_shared' => true,
-        'shared_with_roles' => [$this->user->role]
+        // Private-only: no sharing fields
     ]);
     
     // Test authorization checks

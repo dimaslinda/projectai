@@ -23,8 +23,6 @@ class ChatSession extends Model
         'preferred_model',
         'persona',
         'description',
-        'is_shared',
-        'shared_with_roles',
         'last_activity_at',
     ];
 
@@ -34,8 +32,6 @@ class ChatSession extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'shared_with_roles' => 'array',
-        'is_shared' => 'boolean',
         'last_activity_at' => 'datetime',
     ];
 
@@ -71,38 +67,7 @@ class ChatSession extends Model
         $this->update(['last_activity_at' => now()]);
     }
 
-    /**
-     * Check if the session can be viewed by a user with specific role.
-     */
-    public function canBeViewedByRole(string $role): bool
-    {
-        if (!$this->is_shared) {
-            return false;
-        }
-
-        $sharedRoles = $this->shared_with_roles ?? [];
-        return in_array($role, $sharedRoles);
-    }
-
-    /**
-     * Share the session with specific roles.
-     */
-    public function shareWithRoles(array $roles): void
-    {
-        $this->update([
-            'is_shared' => true,
-            'shared_with_roles' => $roles,
-        ]);
-    }
-
-    /**
-     * Scope to get sessions that can be viewed by a specific role.
-     */
-    public function scopeViewableByRole($query, string $role)
-    {
-        return $query->where('is_shared', true)
-            ->whereJsonContains('shared_with_roles', $role);
-    }
+    // Sharing functionality removed: sessions are private-only
 
     /**
      * Scope to get sessions by persona.

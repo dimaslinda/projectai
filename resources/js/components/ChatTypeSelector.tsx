@@ -99,7 +99,7 @@ const ChatTypeSelector: React.FC<ChatTypeSelectorProps> = ({ onSelect, onCancel,
                 </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Action Buttons - positioned at bottom (non-sticky) */}
             <div className="flex justify-end gap-3 border-t pt-4">
                 {onCancel && (
                     <Button variant="outline" onClick={onCancel}>

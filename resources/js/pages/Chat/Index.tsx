@@ -1,5 +1,5 @@
 import { Head, Link, useForm, router } from '@inertiajs/react';
-import { Clock, MessageSquare, Plus, Share2, Users, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Clock, MessageSquare, Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import { useState } from 'react';
 
 import ChatTypeSelector from '@/components/ChatTypeSelector';
@@ -12,17 +12,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getPersonaById } from '@/config/personas';
 import AppLayout from '@/layouts/app-layout';
 import { type ChatSession } from '@/types';
 
 interface ChatIndexProps {
     mySessions: ChatSession[];
-    sharedSessions: ChatSession[];
     userRole: string;
 }
 
-export default function ChatIndex({ mySessions, sharedSessions, userRole }: ChatIndexProps) {
+export default function ChatIndex({ mySessions, userRole }: ChatIndexProps) {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [selectedChatType, setSelectedChatType] = useState<'global' | 'persona' | null>(null);
     const [selectedSessions, setSelectedSessions] = useState<number[]>([]);
@@ -36,9 +36,11 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
     });
 
     const handleChatTypeSelect = (chatType: 'global' | 'persona') => {
-        // Prevent selecting persona when userRole is 'user'
-        if (userRole === 'user' && chatType === 'persona') {
-            // Ignore selection or force global
+        // Roles that cannot use persona: user, admin, superadmin
+        const personaRestrictedRoles = ['user', 'admin', 'superadmin'];
+
+        if (personaRestrictedRoles.includes(userRole) && chatType === 'persona') {
+            // Force global for restricted roles
             setSelectedChatType('global');
             setData('type', 'global');
             setData('persona', null);
@@ -56,6 +58,26 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
         } else if (chatType === 'persona') {
             const personaData = getPersonaById(userRole);
             setData('title', `Chat ${personaData?.name || userRole}`);
+        }
+    };
+
+    // Open dialog: skip selection for non-persona roles
+    const openCreateDialog = () => {
+        setIsCreateDialogOpen(true);
+        const rolesWithPersonaSelection = ['drafter', 'engineer'];
+
+        if (!rolesWithPersonaSelection.includes(userRole)) {
+            // Auto-select global for general/admin/superadmin roles
+            setSelectedChatType('global');
+            setData('type', 'global');
+            setData('persona', null);
+            setData('title', 'Chat Global');
+        } else {
+            // Show selection step for drafter & engineer
+            setSelectedChatType(null);
+            // Reset form defaults before selection (keep type unset until user chooses)
+            setData('persona', null);
+            setData('title', '');
         }
     };
 
@@ -155,13 +177,14 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
 
                     <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => setIsCreateDialogOpen(true)}>
+                            <Button onClick={openCreateDialog}>
                                 <Plus className="mr-2 h-4 w-4" />
                                 Sesi Chat Baru
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[500px]">
-                            {!selectedChatType ? (
+                        <DialogContent className="sm:max-w-[500px] max-h-[calc(100vh-6rem)] overflow-y-auto">
+                            {/* Hanya tampilkan langkah pemilihan untuk role yang memiliki persona */}
+                            {!selectedChatType && ['drafter', 'engineer'].includes(userRole) ? (
                                 <>
                                     <DialogHeader>
                                         <DialogTitle>Pilih Jenis Chat Session</DialogTitle>
@@ -206,16 +229,36 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
                                         </div>
                                     </div>
                                     <DialogFooter className="gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={() => {
-                                                setSelectedChatType(null);
-                                                reset();
-                                            }}
-                                        >
-                                            Kembali
-                                        </Button>
+                                        {['drafter', 'engineer'].includes(userRole) ? (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setSelectedChatType(null);
+                                                    reset();
+                                                }}
+                                            >
+                                                Kembali
+                                            </Button>
+                                        ) : (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setIsCreateDialogOpen(false);
+                                                            reset();
+                                                        }}
+                                                    >
+                                                        Batal
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top">
+                                                    <p>Tutup dialog dan batalkan pembuatan sesi.</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
                                         <Button type="submit" disabled={processing}>
                                             {processing ? 'Membuat...' : 'Buat Sesi'}
                                         </Button>
@@ -329,7 +372,6 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
                                                 <CardHeader className="pb-3">
                                                     <div className="flex items-start justify-between">
                                                         <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
-                                                        {session.is_shared && <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
                                                     </div>
                                                     {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
                                                 </CardHeader>
@@ -367,7 +409,6 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
                                                 <CardHeader className="pb-3">
                                                     <div className="flex items-start justify-between">
                                                         <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
-                                                        {session.is_shared && <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
                                                     </div>
                                                     {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
                                                 </CardHeader>
@@ -408,61 +449,7 @@ export default function ChatIndex({ mySessions, sharedSessions, userRole }: Chat
                     )}
                 </div>
 
-                {/* Shared Sessions */}
-                {sharedSessions.length > 0 && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Users className="h-5 w-5" />
-                            <h2 className="text-xl font-semibold">Sesi Chat Dibagikan</h2>
-                            <Badge variant="secondary">{sharedSessions.length}</Badge>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {sharedSessions.map((session) => (
-                                <Card key={session.id} className="cursor-pointer transition-shadow hover:shadow-md">
-                                    <Link href={`/chat/${session.id}`}>
-                                        <CardHeader className="pb-3">
-                                            <div className="flex items-start justify-between">
-                                                <CardTitle className="line-clamp-2 text-lg">{session.title}</CardTitle>
-                                                <Share2 className="ml-2 h-4 w-4 flex-shrink-0 text-blue-500" />
-                                            </div>
-                                            {session.description && <CardDescription className="line-clamp-2">{session.description}</CardDescription>}
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
-                                                <div className="flex items-center gap-1">
-                                                    <Clock className="h-3 w-3" />
-                                                    {formatDate(session.last_activity_at)}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Badge
-                                                        variant="outline"
-                                                        className={`text-xs ${
-                                                            session.chat_type === 'global'
-                                                                ? 'border-purple-200 bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950'
-                                                                : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950'
-                                                        }`}
-                                                    >
-                                                        {session.chat_type === 'global' ? 'Global' : 'Persona'}
-                                                    </Badge>
-                                                    {session.persona && (
-                                                        <Badge className={getRoleColor(session.persona)} variant="secondary">
-                                                            {session.persona.toUpperCase()}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground">Oleh: {session.user?.name || 'Unknown'}</p>
-                                            {session.latest_message && (
-                                                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{session.latest_message.message}</p>
-                                            )}
-                                        </CardContent>
-                                    </Link>
-                                </Card>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                
             </div>
         </AppLayout>
     );

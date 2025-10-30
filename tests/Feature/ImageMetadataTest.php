@@ -17,7 +17,6 @@ it('can create chat session for image metadata testing', function () {
     $session = ChatSession::create([
         'user_id' => $this->user->id,
         'title' => 'Test Image Metadata Session',
-        'persona' => null,
         'chat_type' => 'global',
         'preferred_model' => 'gemini-2.5-flash-image'
     ]);
@@ -31,13 +30,11 @@ it('can save chat history with image metadata', function () {
     $session = ChatSession::create([
         'user_id' => $this->user->id,
         'title' => 'Test Image Metadata Session',
-        'persona' => null,
         'chat_type' => 'global',
         'preferred_model' => 'gemini-2.5-flash-image'
     ]);
 
     $metadata = [
-        'persona' => null,
         'chat_type' => 'global',
         'timestamp' => now()->toISOString(),
         'images' => [],
@@ -63,7 +60,6 @@ it('can test chat controller image generation', function () {
     $session = ChatSession::create([
         'user_id' => $this->user->id,
         'title' => 'Test Image Generation',
-        'persona' => null,
         'chat_type' => 'global',
         'preferred_model' => 'gemini-2.5-flash-image'
     ]);

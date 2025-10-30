@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { ArrowLeft, Bot, ImagePlus, MoreVertical, Send, Settings, Share2, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bot, ImagePlus, MoreVertical, Send, Settings, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import ChatMessage from '@/components/ChatMessage';
@@ -465,15 +465,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
         [message, selectedImages, isSubmitting, isStreaming, session.id, showAIResponseNotification, scrollToBottom],
     );
 
-    const handleToggleSharing = () => {
-        router.patch(
-            `/chat/${session.id}/toggle-sharing`,
-            {},
-            {
-                preserveScroll: true,
-            },
-        );
-    };
+    // Sharing feature disabled: sessions are private-only
 
     const handleDeleteSession = () => {
         router.delete(`/chat/${session.id}`);
@@ -576,12 +568,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
-                                {session.is_shared && (
-                                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary shadow-sm">
-                                        <Share2 className="mr-1 h-3 w-3" />
-                                        Dibagikan
-                                    </Badge>
-                                )}
+                                {/* Sharing indicator removed: sessions are private-only */}
                             </div>
                         </div>
                     </div>
@@ -600,10 +587,7 @@ export default function ChatShow({ session, canEdit }: ChatShowProps) {
                                         <Settings className="mr-2 h-4 w-4" />
                                         Notifikasi
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={handleToggleSharing}>
-                                        <Share2 className="mr-2 h-4 w-4" />
-                                        {session.is_shared ? 'Batal Bagikan' : 'Bagikan'}
-                                    </DropdownMenuItem>
+                                    {/* Sharing toggle removed */}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive">
                                         <Trash2 className="mr-2 h-4 w-4" />

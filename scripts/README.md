@@ -64,11 +64,11 @@ scripts/
 ## Maintenance Scripts
 
 ### session_fixer.php
-- **Purpose**: Fix chat session sharing configuration
+- **Purpose**: Enforce private-only chat sessions
 - **Features**:
-  - Checks session sharing settings
-  - Ensures consistency between `is_shared` and `shared_with_roles`
-  - Sets owner roles for non-shared sessions
+  - Disables any sharing (`is_shared` forced to false)
+  - Clears `shared_with_roles` for all sessions
+  - Reports fixes applied per session
 - **Usage**: `php scripts/maintenance/session_fixer.php`
 
 ### cache_manager.php

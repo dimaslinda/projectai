@@ -19,7 +19,6 @@ beforeEach(function () {
     // Create a test chat session
     $this->session = ChatSession::create([
         'user_id' => $this->user->id,
-        'persona' => null, // Use null for general chat
         'chat_type' => 'general',
         'title' => 'Test Image Generation'
     ]);
@@ -30,7 +29,6 @@ it('can generate AI response for image generation request', function () {
     $request = new Request();
     $request->merge([
         'message' => 'Buatkan gambar kucing yang sedang bermain',
-        'persona' => null,
         'chat_type' => 'general',
         'session_id' => $this->session->id
     ]);
@@ -71,7 +69,6 @@ it('can handle chat controller image generation via HTTP request', function () {
     
     $response = $this->postJson('/chat', [
         'message' => 'Buatkan gambar kucing yang sedang bermain',
-        'persona' => null,
         'chat_type' => 'general',
         'session_id' => $this->session->id,
         'title' => 'Test Chat',

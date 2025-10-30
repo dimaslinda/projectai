@@ -21,8 +21,6 @@ it('can test owner authorization for chat sessions', function () {
         'chat_type' => 'persona',
         'persona' => $this->user->role,
         'description' => 'Testing owner authorization issue',
-        'is_shared' => true,
-        'shared_with_roles' => [$this->user->role],
         'last_activity_at' => now(),
     ]);
 
@@ -30,15 +28,11 @@ it('can test owner authorization for chat sessions', function () {
     $isOwner = $session->user_id === $this->user->id;
     expect($isOwner)->toBeTrue();
 
-    // Test 2: Can user view by role?
-    $canViewByRole = $session->canBeViewedByRole($this->user->role);
-    expect($canViewByRole)->toBeTrue();
-
-    // Test 3: Controller show logic
-    $canView = $session->user_id === $this->user->id || $session->canBeViewedByRole($this->user->role);
+    // Controller show logic: private-only (owner can view)
+    $canView = $session->user_id === $this->user->id;
     expect($canView)->toBeTrue();
 
-    // Test 4: Can edit (frontend logic)
+    // Can edit (frontend logic): private-only (owner can edit)
     $canEdit = $session->user_id === $this->user->id;
     expect($canEdit)->toBeTrue();
 });
@@ -49,17 +43,14 @@ it('can test authorization when session is not shared', function () {
         'title' => 'Test Session - Not Shared',
         'chat_type' => 'persona',
         'persona' => $this->user->role,
-        'is_shared' => false,
-        'shared_with_roles' => null,
     ]);
 
     // Owner should still have access
     expect($session->user_id === $this->user->id)->toBeTrue();
-    expect($session->canBeViewedByRole($this->user->role))->toBeFalse();
     
-    // Controller logic: owner OR can view by role
-    $canView = $session->user_id === $this->user->id || $session->canBeViewedByRole($this->user->role);
-    expect($canView)->toBeTrue(); // True because user is owner
+    // Controller logic: private-only (owner can view)
+    $canView = $session->user_id === $this->user->id;
+    expect($canView)->toBeTrue();
 });
 
 it('can test authorization when session is shared with different role', function () {
@@ -68,17 +59,14 @@ it('can test authorization when session is shared with different role', function
         'title' => 'Test Session - Different Role',
         'chat_type' => 'persona',
         'persona' => $this->user->role,
-        'is_shared' => true,
-        'shared_with_roles' => ['drafter'], // Different role
     ]);
 
     // Owner should still have access
     expect($session->user_id === $this->user->id)->toBeTrue();
-    expect($session->canBeViewedByRole($this->user->role))->toBeFalse(); // Not shared with engineer role
     
-    // Controller logic: owner OR can view by role
-    $canView = $session->user_id === $this->user->id || $session->canBeViewedByRole($this->user->role);
-    expect($canView)->toBeTrue(); // True because user is owner
+    // Controller logic: private-only (owner can view)
+    $canView = $session->user_id === $this->user->id;
+    expect($canView)->toBeTrue();
 });
 
 it('can test authorization when session is shared with correct role', function () {
@@ -87,15 +75,12 @@ it('can test authorization when session is shared with correct role', function (
         'title' => 'Test Session - Correct Role',
         'chat_type' => 'persona',
         'persona' => $this->user->role,
-        'is_shared' => true,
-        'shared_with_roles' => [$this->user->role], // Same role
     ]);
 
     // Owner should have access
     expect($session->user_id === $this->user->id)->toBeTrue();
-    expect($session->canBeViewedByRole($this->user->role))->toBeTrue(); // Shared with engineer role
     
-    // Controller logic: owner OR can view by role
-    $canView = $session->user_id === $this->user->id || $session->canBeViewedByRole($this->user->role);
-    expect($canView)->toBeTrue(); // True for both reasons
+    // Controller logic: private-only (owner can view)
+    $canView = $session->user_id === $this->user->id;
+    expect($canView)->toBeTrue();
 });

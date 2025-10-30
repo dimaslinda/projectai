@@ -24,21 +24,18 @@ try {
         echo "Owner: {$session->user->name} (ID: {$session->user_id})\n";
         echo "Chat Type: {$session->chat_type}\n";
         echo "Persona: " . ($session->persona ?? 'null') . "\n";
-        echo "Is Shared: " . ($session->is_shared ? 'Yes' : 'No') . "\n";
-        echo "Shared with roles: " . json_encode($session->shared_with_roles) . "\n";
+        // Sharing columns removed; sessions are strictly private
         echo "Created: {$session->created_at}\n";
         echo "Last Activity: {$session->last_activity_at}\n";
         
-        // Test authorization for the owner
+        // Authorization: private-only sessions
         $owner = $session->user;
-        $canViewByRole = $session->canBeViewedByRole($owner->role);
-        $canView = $session->user_id === $owner->id || $canViewByRole;
+        $canView = $session->user_id === $owner->id;
         $canEdit = $session->user_id === $owner->id;
-        
-        echo "Authorization for owner:\n";
-        echo "  - Can view by role: " . ($canViewByRole ? 'Yes' : 'No') . "\n";
-        echo "  - Can view (controller): " . ($canView ? 'Yes' : 'No') . "\n";
-        echo "  - Can edit (frontend): " . ($canEdit ? 'Yes' : 'No') . "\n";
+
+        echo "Authorization (private-only):\n";
+        echo "  - Can view: " . ($canView ? 'Yes' : 'No') . "\n";
+        echo "  - Can edit: " . ($canEdit ? 'Yes' : 'No') . "\n";
         
         // Check if there are any issues
         $issues = [];
@@ -51,13 +48,7 @@ try {
             $issues[] = "Owner cannot view their own session";
         }
         
-        if ($session->is_shared && empty($session->shared_with_roles)) {
-            $issues[] = "Session is marked as shared but has no shared roles";
-        }
-        
-        if (!$session->is_shared && !empty($session->shared_with_roles)) {
-            $issues[] = "Session is not shared but has shared roles defined";
-        }
+        // Private-only policy enforced at model/controller; no sharing checks needed
         
         if (!empty($issues)) {
             echo "⚠️  Issues found:\n";
@@ -74,20 +65,14 @@ try {
     // Check for sessions with potential problems
     echo "=== Potential Problem Sessions ===\n";
     
-    $problemSessions = ChatSession::where(function($query) {
-        $query->where('is_shared', true)
-              ->whereNull('shared_with_roles');
-    })->orWhere(function($query) {
-        $query->where('is_shared', false)
-              ->whereNotNull('shared_with_roles');
-    })->get();
+    // With sharing removed, simply report sessions without recent activity (example heuristic)
+    $problemSessions = ChatSession::whereNull('last_activity_at')->get();
     
     if ($problemSessions->count() > 0) {
         echo "Found {$problemSessions->count()} sessions with potential issues:\n\n";
         foreach ($problemSessions as $session) {
             echo "Session ID {$session->id}: {$session->title}\n";
-            echo "  - is_shared: " . ($session->is_shared ? 'true' : 'false') . "\n";
-            echo "  - shared_with_roles: " . json_encode($session->shared_with_roles) . "\n\n";
+            echo "  - last_activity_at: " . ($session->last_activity_at ?? 'null') . "\n\n";
         }
     } else {
         echo "No sessions with obvious configuration issues found.\n";

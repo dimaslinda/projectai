@@ -24,18 +24,10 @@ class ChatController extends Controller
             ->with(['latestMessage', 'user'])
             ->orderBy('last_activity_at', 'desc')
             ->get();
-
-        // Get shared sessions from other users with same role
-        $sharedSessions = ChatSession::viewableByRole($user->role)
-            ->where('user_id', '!=', $user->id)
-            ->where('is_shared', true)
-            ->with(['latestMessage', 'user'])
-            ->orderBy('last_activity_at', 'desc')
-            ->get();
-
+        
+        // Sharing disabled: only return user's own sessions
         return Inertia::render('Chat/Index', [
             'mySessions' => $mySessions,
-            'sharedSessions' => $sharedSessions,
             'userRole' => $user->role,
         ]);
     }
@@ -91,8 +83,6 @@ class ChatController extends Controller
             'preferred_model' => $request->preferred_model ?? 'gemini-2.5-pro',
             'persona' => $persona,
             'description' => $request->description,
-            'is_shared' => false, // Do not share by default
-            'shared_with_roles' => null, // No shared roles by default
             'last_activity_at' => now(),
         ]);
 
@@ -183,13 +173,11 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
-        // Check if user can view this session
-        // User can view if they own the session OR if it's shared with their role
+        // Check if user can view this session (owner-only)
         $isOwner = ($session->user_id === $user->id) ||
             ((int)$session->user_id === (int)$user->id) ||
             ($session->user_id == $user->id);
-        $canViewShared = $session->canBeViewedByRole($user->role);
-        $canView = $isOwner || $canViewShared;
+        $canView = $isOwner;
 
         if (!$canView) {
             abort(403, 'Anda tidak memiliki izin untuk melihat sesi chat ini.');
@@ -525,33 +513,7 @@ class ChatController extends Controller
         ]);
     }
 
-    /**
-     * Toggle sharing status of a chat session
-     */
-    public function toggleSharing(ChatSession $session)
-    {
-        $user = auth()->user();
-
-        // Only the actual owner can toggle sharing, not users with shared access
-        // Use type-safe comparison to handle production data type issues
-        $sessionUserId = $session->user_id;
-        $currentUserId = $user->id;
-
-        $isOwner = ($sessionUserId === $currentUserId) ||
-            ((int)$sessionUserId === (int)$currentUserId) ||
-            ($sessionUserId == $currentUserId);
-
-        if (!$isOwner) {
-            abort(403, 'Anda hanya dapat memodifikasi pengaturan berbagi sesi chat Anda sendiri.');
-        }
-
-        $session->update([
-            'is_shared' => !$session->is_shared,
-            'shared_with_roles' => !$session->is_shared ? [$user->role] : null,
-        ]);
-
-        return back()->with('message', 'Status berbagi berhasil diperbarui.');
-    }
+    // Sharing feature removed: sessions are private-only
 
     /**
      * Delete a chat session

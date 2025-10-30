@@ -23,20 +23,16 @@ class ChangelogCurrentUpdateSeeder extends Seeder
         }
 
         $changelog = [
-            'version' => 'v1.1.1',
+            'version' => 'v1.1.2',
             'release_date' => now()->format('Y-m-d'),
             'type' => 'patch',
-            'title' => 'Perbaikan UI Chat & Notifikasi Changelog (Terbaru Saja)',
-            'description' => 'Peningkatan pengalaman pengguna: pesan dan blok kode kini tampil rapi tanpa keluar batas, dan notifikasi changelog hanya menampilkan update terbaru yang relevan.',
+            'title' => 'Penyederhanaan Pembuatan Sesi Chat & Perbaikan Dialog',
+            'description' => 'Sekarang, pengguna umum, admin, dan superadmin langsung menggunakan Chat Global tanpa langkah pemilihan. Pengguna Drafter dan Engineer tetap dapat memilih tipe chat. Dialog pembuatan chat kini bisa digulir sehingga tombol aksi terlihat sepenuhnya.',
             'changes' => [
-                '💬 Pesan AI dan teks panjang kini terbungkus rapi (tidak keluar batas).',
-                '🧩 Blok kode panjang dapat digulir secara horizontal jika diperlukan.',
-                '🔗 Teks, URL, dan kode inline otomatis terpecah baris agar tetap terbaca.',
-                '🔔 Notifikasi changelog di lonceng hanya menampilkan satu update terbaru.',
-                '🪧 Banner changelog di dashboard hanya muncul untuk update terbaru yang belum dilihat.',
-                '✅ Tombol “Tandai dibaca” tersedia langsung dari notifikasi terbaru.',
-                '⚙️ Stabilitas pemilihan model di halaman chat lebih baik.',
-                '📱 Peningkatan responsivitas di beberapa komponen untuk kenyamanan penggunaan.'
+                '⚡ Pembuatan sesi untuk pengguna umum, admin, dan superadmin langsung ke Chat Global (tanpa memilih).',
+                '🛡️ Drafter dan Engineer tetap dapat memilih antara Chat Global atau Chat Persona.',
+                '🖱️ Dialog pembuatan chat dapat digulir (scroll) agar tombol selalu terlihat.',
+                '🎯 Pengalaman pengguna lebih sederhana dan cepat saat membuat sesi chat.'
             ],
             // Tidak menyertakan catatan teknis, fokus pada informasi untuk pengguna umum
             'technical_notes' => [],
