@@ -36,8 +36,11 @@
         <meta name="application-name" content="Gradient Ai">
         <meta name="apple-mobile-web-app-title" content="Gradient Ai">
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/logo.svg" type="image/svg+xml">
+        {{-- favicon .ico untuk Windows/Chromium prompt & taskbar --}}
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        {{-- gunakan PNG agar installer Windows tidak mengambil SVG Laravel --}}
+        <link rel="icon" type="image/png" sizes="32x32" href="/asset/img/Icon.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/asset/img/Icon.png">
         <link rel="apple-touch-icon" href="/asset/img/Icon.png">
         <link rel="manifest" href="/manifest.webmanifest">
 
