@@ -3,6 +3,11 @@ import usePWAInstallPrompt from '@/hooks/usePWAInstallPrompt';
 
 export default function InstallPromptBanner() {
   const { canInstall, isInstalled, showPrompt, install, dismiss, isIosSafari } = usePWAInstallPrompt();
+  // Detect mobile (Android/iOS) to adjust copy; fallback to desktop otherwise
+  const isMobile = React.useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }, []);
 
   if (isInstalled) return null;
 
@@ -40,7 +45,7 @@ export default function InstallPromptBanner() {
           <path d="M12 3l4 4h-3v6h-2V7H8l4-4zm-7 9h2v8h10v-8h2v10H5V12z" />
         </svg>
         <div className="text-sm">
-          <div className="font-medium">Install aplikasi ke desktop</div>
+          <div className="font-medium">{isMobile ? 'Pasang aplikasi ke ponsel Anda' : 'Pasang aplikasi ke desktop'}</div>
           <div className="opacity-90">Nikmati pengalaman penuh dengan aplikasi yang terpasang.</div>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -50,7 +55,7 @@ export default function InstallPromptBanner() {
               await install();
             }}
           >
-            Install
+            Pasang
           </button>
           <button
             className="inline-flex items-center rounded-md bg-white/20 px-3 py-1.5 text-sm hover:bg-white/30"
