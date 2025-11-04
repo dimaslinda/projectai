@@ -30,13 +30,15 @@
             }
         </style>
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        <title inertia>{{ config('app.name', 'Gradient Ai') }}</title>
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <meta name="theme-color" content="#0EA5E9">
+        <meta name="application-name" content="Gradient Ai">
+        <meta name="apple-mobile-web-app-title" content="Gradient Ai">
 
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/logo.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="apple-touch-icon" href="/asset/img/Icon.png">
         <link rel="manifest" href="/manifest.webmanifest">
 
         <link rel="preconnect" href="https://fonts.bunny.net">

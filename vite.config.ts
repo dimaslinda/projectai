@@ -24,10 +24,10 @@ export default defineConfig({
         VitePWA({
             registerType: 'autoUpdate',
             devOptions: { enabled: true },
-            includeAssets: ['logo.svg', 'robots.txt', 'apple-touch-icon.png', 'favicon.ico'],
+            includeAssets: ['asset/img/Icon.png', 'robots.txt', 'favicon.svg'],
             manifest: {
-                name: 'ProjectAI',
-                short_name: 'ProjectAI',
+                name: 'Gradient Ai',
+                short_name: 'Gradient Ai',
                 description: 'Chat & AI assistant',
                 start_url: '/',
                 scope: '/',
@@ -37,9 +37,9 @@ export default defineConfig({
                 id: 'com.projectai.app',
                 categories: ['productivity', 'utilities'],
                 icons: [
-                    { src: '/logo.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
-                    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-                    { src: '/favicon.ico', sizes: '48x48', type: 'image/x-icon' },
+                    { src: '/asset/img/Icon.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+                    { src: '/asset/img/Icon.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+                    { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
                 ],
             },
             workbox: {

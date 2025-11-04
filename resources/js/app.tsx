@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { initializeTheme } from './hooks/use-appearance';
 import { registerSW } from 'virtual:pwa-register';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'Gradient Ai';
 
 createInertiaApp({
     title: (title) => (title ? `${title}` : appName),
