@@ -22,7 +22,8 @@
         "prettier-plugin-organize-imports": "^4.1.0",
         "prettier-plugin-tailwindcss": "^0.6.11",
         "typescript-eslint": "^8.23.0",
-        "vite-plugin-mkcert": "^1.17.9"
+        "vite-plugin-mkcert": "^1.17.9",
+        "vite-plugin-pwa": "^1.1.0"
     },
     "dependencies": {
         "@headlessui/react": "^2.2.0",

@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
 import mkcert from 'vite-plugin-mkcert';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
     plugins: [
@@ -19,6 +20,49 @@ export default defineConfig({
         }),
         mkcert({
             hosts: ['projectai.test', 'localhost'],
+        }),
+        VitePWA({
+            registerType: 'autoUpdate',
+            devOptions: { enabled: true },
+            includeAssets: ['logo.svg', 'robots.txt', 'apple-touch-icon.png', 'favicon.ico'],
+            manifest: {
+                name: 'ProjectAI',
+                short_name: 'ProjectAI',
+                description: 'Chat & AI assistant',
+                start_url: '/',
+                scope: '/',
+                display: 'standalone',
+                background_color: '#0B0F1A',
+                theme_color: '#0EA5E9',
+                id: 'com.projectai.app',
+                categories: ['productivity', 'utilities'],
+                icons: [
+                    { src: '/logo.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+                    { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+                    { src: '/favicon.ico', sizes: '48x48', type: 'image/x-icon' },
+                ],
+            },
+            workbox: {
+                navigateFallback: '/offline.html',
+                runtimeCaching: [
+                    {
+                        urlPattern: ({ request }) => request.destination === 'image',
+                        handler: 'CacheFirst',
+                        options: { cacheName: 'images', expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 } },
+                    },
+                    {
+                        urlPattern: ({ request }) => request.destination === 'script' || request.destination === 'style' || request.destination === 'font',
+                        handler: 'StaleWhileRevalidate',
+                        options: { cacheName: 'assets' },
+                    },
+                    {
+                        // Avoid caching API and streaming endpoints
+                        urlPattern: ({ url }) => url.pathname.startsWith('/api') || url.pathname.includes('/stream'),
+                        handler: 'NetworkOnly',
+                        options: { cacheName: 'api' },
+                    },
+                ],
+            },
         }),
     ],
     server: {

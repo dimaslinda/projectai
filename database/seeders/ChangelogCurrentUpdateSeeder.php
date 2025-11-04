@@ -23,16 +23,17 @@ class ChangelogCurrentUpdateSeeder extends Seeder
         }
 
         $changelog = [
-            'version' => 'v1.1.2',
+            'version' => 'v1.1.3',
             'release_date' => now()->format('Y-m-d'),
-            'type' => 'patch',
-            'title' => 'Penyederhanaan Pembuatan Sesi Chat & Perbaikan Dialog',
-            'description' => 'Sekarang, pengguna umum, admin, dan superadmin langsung menggunakan Chat Global tanpa langkah pemilihan. Pengguna Drafter dan Engineer tetap dapat memilih tipe chat. Dialog pembuatan chat kini bisa digulir sehingga tombol aksi terlihat sepenuhnya.',
+            'type' => 'minor',
+            'title' => 'Banner Install PWA & Ikon Logo Aplikasi',
+            'description' => 'Sekarang Anda dapat memasang aplikasi ke desktop maupun ponsel dengan lebih mudah. Kami menambahkan banner “Install” yang muncul otomatis saat perangkat mendukung pemasangan PWA. Di iOS Safari, ditampilkan panduan untuk menambahkan aplikasi ke layar utama. Ikon aplikasi juga telah diganti ke logo resmi untuk pengalaman yang lebih konsisten.',
             'changes' => [
-                '⚡ Pembuatan sesi untuk pengguna umum, admin, dan superadmin langsung ke Chat Global (tanpa memilih).',
-                '🛡️ Drafter dan Engineer tetap dapat memilih antara Chat Global atau Chat Persona.',
-                '🖱️ Dialog pembuatan chat dapat digulir (scroll) agar tombol selalu terlihat.',
-                '🎯 Pengalaman pengguna lebih sederhana dan cepat saat membuat sesi chat.'
+                '📲 Banner ajakan memasang aplikasi (Install) muncul di bagian bawah saat perangkat mendukung.',
+                '🖥️ Aplikasi dapat dipasang di desktop (Chrome/Edge) dan mobile Android.',
+                '🍎 iOS Safari menampilkan instruksi “Share → Add to Home Screen”.',
+                '🎨 Ikon aplikasi diperbarui menggunakan logo resmi proyek di seluruh tampilan.',
+                '✅ Perbaikan deteksi PWA (manifest & service worker) agar instalasi lebih lancar.'
             ],
             // Tidak menyertakan catatan teknis, fokus pada informasi untuk pengguna umum
             'technical_notes' => [],
