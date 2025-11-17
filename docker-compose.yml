@@ -1,0 +1,18 @@
+services:
+  app:
+    container_name: projectai
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:8080"
+    env_file:
+      - .env
+    volumes:
+      - projectai_storage:/var/www/html/storage
+      - projectai_cache:/var/www/html/bootstrap/cache
+    restart: unless-stopped
+
+volumes:
+  projectai_storage:
+  projectai_cache:
