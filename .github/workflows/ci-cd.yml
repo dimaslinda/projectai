@@ -71,67 +71,33 @@ jobs:
         run: ./vendor/bin/pest
 
   deploy:
-    name: Deploy to Server
+    name: Deploy to CPanel
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.ref == 'refs/heads/main'
+    if: success()
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v2.1.0
+        with:
+          fetch-depth: 2
 
-      - name: Setup PHP
+      - name: Install PHP and Composer
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
-          tools: composer:v2
+          php-version: '8.3'
+          tools: 'composer'
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Install PHP dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Build assets
+        run: npm install && npm run build
+
+      - name: FTP-Deploy-Action
+        uses: SamKirkland/FTP-Deploy-Action@4.3.3
         with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: |
-          composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
-          npm ci
-
-      - name: Build Assets
-        run: npm run build
-
-      - name: Upload Files
-        uses: easingthemes/ssh-deploy@v2.2.11
-        with:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
-          REMOTE_HOST: ${{ secrets.SSH_HOST }}
-          REMOTE_USER: ${{ secrets.SSH_USER }}
-          REMOTE_PORT: ${{ secrets.SSH_PORT }}
-          SOURCE: './'
-          TARGET: ${{ secrets.DEPLOY_PATH }}
-          ARGS: '-rlgoDzvc -i'
-          EXCLUDE: |
-            /.git/
-            /node_modules/
-            /vendor/
-            /tests/
-            /.github/
-            /storage/
-            /bootstrap/ssr/
-            /.env
-
-      - name: Run Remote Commands
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            php artisan down || true
-            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
-            php artisan migrate --force
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            php artisan optimize
-            php artisan up
+          server: ${{ secrets.SERVER }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.PASSWORD }}
+          exclude: |
+            **/vendor/**
+            **/node_modules/**
